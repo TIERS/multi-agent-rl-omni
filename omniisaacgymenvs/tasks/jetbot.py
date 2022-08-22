@@ -31,12 +31,14 @@ from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.robots.controllers.differential_controller import DifferentialController
 
 from omni.isaac.core.articulations import ArticulationView
+from omni.isaac.core.prims import GeometryPrimView
 from omni.isaac.core.utils.prims import get_prim_at_path
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.objects import VisualCuboid
 from omni.isaac.core.utils.types import ArticulationActions
 from omni.isaac.range_sensor import _range_sensor
+from omni.isaac.core.utils.rotations import quat_to_euler_angles
 import omni.kit.commands
 from pxr import Gf
 
@@ -64,10 +66,11 @@ class JetbotTask(RLTask):
 
         self._reset_dist = self._task_cfg["env"]["resetDist"]
         self._max_push_effort = self._task_cfg["env"]["maxEffort"]
-        self._max_episode_length = 500
+        self._max_episode_length = 1000
         self.target_position = np.array([1.5, 1.5, 0.0])
 
-        self._num_observations = 72+1
+        self.ranges_count = 72
+        self._num_observations = self.ranges_count + 1  # +1 for angle
         self._num_actions = 1
 
         self._diff_controller = DifferentialController(name="simple_control",wheel_radius=0.03, wheel_base=0.1125)
@@ -80,6 +83,7 @@ class JetbotTask(RLTask):
         self.add_prims_to_stage(scene)
         super().set_up_scene(scene)
         self._jetbots = ArticulationView(prim_paths_expr="/World/envs/.*/jetbot_with_lidar/jetbot_with_lidar", name="jetbot_view")
+        self._targets = GeometryPrimView(prim_paths_expr="/World/envs/.*/target_cube", name="target_view")
         scene.add(self._jetbots)
 
     def add_prims_to_stage(self, scene):
@@ -114,13 +118,18 @@ class JetbotTask(RLTask):
         )
         lidar.GetPrim().GetAttribute("xformOp:translate").Set(Gf.Vec3d(0.0, 0.0, 0.11))
 
-        scene.add(VisualCuboid(
-                prim_path=self.default_zero_env_path + "/target_cube", # The prim path of the cube in the USD stage
-                name="target_cube", # The unique name used to retrieve the object from the scene later on
-                position=self.target_position, # Using the current stage units which is in meters by default.
-                size=np.array([0.1, 0.1, 0.1]), # most arguments accept mainly numpy arrays.
-                color=np.array([1.0, 0, 0]), # RGB channels, going from 0-1
-        ))
+        add_reference_to_stage(
+            usd_path="/home/eetu/jetbot_isaac/content/target_cube.usd",
+            prim_path=self.default_zero_env_path + "/target_cube",
+        )
+
+        # scene.add(VisualCuboid(
+        #         prim_path=self.default_zero_env_path + "/target_cube", # The prim path of the cube in the USD stage
+        #         name="target_cube", # The unique name used to retrieve the object from the scene later on
+        #         position=self.target_position, # Using the current stage units which is in meters by default.
+        #         size=np.array([0.1, 0.1, 0.1]), # most arguments accept mainly numpy arrays.
+        #         color=np.array([1.0, 0, 0]), # RGB channels, going from 0-1
+        # ))
 
     def get_observations(self) -> dict:
         #dof_pos = self._cartpoles.get_joint_positions(clone=False)
@@ -136,19 +145,37 @@ class JetbotTask(RLTask):
         #self.obs_buf[:, 2] = pole_pos
         #self.obs_buf[:, 3] = pole_vel
 
-        # self.ranges = torch.zeros((self._num_envs, 360))
+        self.ranges = torch.zeros((self._num_envs, self.ranges_count))
 
-        # for i in range(self._num_envs):
-        #     np_ranges = self.lidarInterface.get_linear_depth_data(self._lidarpaths[i]).squeeze()
-        #     self.ranges[i] = torch.tensor(np_ranges)
+        for i in range(self._num_envs):
+            np_ranges = self.lidarInterface.get_linear_depth_data(self._lidarpaths[i]).squeeze()
+            self.ranges[i] = torch.tensor(np_ranges)
         
-        # print(self.ranges.shape)
+        #print(self.ranges.shape)
 
-        # self.obs_buf[:,:360] = self.ranges
+        self.obs_buf[:, :self.ranges_count] = self.ranges
 
-        # print(self.obs_buf)
+        self.positions, rotations = self._jetbots.get_world_poses()
+        yaws = []
+        for rot in rotations:
+            yaws.append(quat_to_euler_angles(rot)[2])
 
-        #print(self._env._world.get_physics_context()._use_flatcache)
+        #print("position", self.position)
+        #print("yaw", yaws)
+        #print("target pos", self.target_pos)
+        #goal_angles = np.arctan2(self.target_position[1] - self.position[1], self.target_position[0] - self.position[0])
+
+        # heading = goal_angle - yaw
+        # if heading > math.pi:
+        #     heading -= 2 * math.pi
+
+        # elif heading < -math.pi:
+        #     heading += 2 * math.pi
+        
+        # #print("heading", heading)
+
+        # #print(np.hstack((jetbot_pos, jetbot_vel)))
+        # self.obs = np.hstack((self.ranges.squeeze(), yaw))
 
         observations = {
             self._jetbots.name: {
@@ -184,20 +211,21 @@ class JetbotTask(RLTask):
     def reset_idx(self, env_ids):
         num_resets = len(env_ids)
 
-        # randomize DOF positions
-        # dof_pos = torch.zeros((num_resets, self._cartpoles.num_dof), device=self._device)
-        # dof_pos[:, self._cart_dof_idx] = 1.0 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
-        # dof_pos[:, self._pole_dof_idx] = 0.125 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
-
-        # randomize DOF velocities
-        # dof_vel = torch.zeros((num_resets, self._cartpoles.num_dof), device=self._device)
-        # dof_vel[:, self._cart_dof_idx] = 0.5 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
-        # dof_vel[:, self._pole_dof_idx] = 0.25 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
+        #self.current_step = 0
+        #self.goal_reached = False
+        #self.collision = False
 
         # apply resets
-        # indices = env_ids.to(dtype=torch.int32)
-        # self._cartpoles.set_joint_positions(dof_pos, indices=indices)
-        # self._cartpoles.set_joint_velocities(dof_vel, indices=indices)
+        root_pos, root_rot = self.initial_root_pos[env_ids], self.initial_root_rot[env_ids]
+        root_vel = torch.zeros((num_resets, 6), device=self._device)
+
+        self._jetbots.set_world_poses(root_pos, root_rot, indices=env_ids)
+        self._jetbots.set_velocities(root_vel, indices=env_ids)
+
+
+        target_pos = self.initial_target_pos[env_ids] + torch.tensor([1.5, 1.5, 0], device=self._device)
+        
+        self._targets.set_world_poses(target_pos, indices=env_ids)
 
         # bookkeeping
         self.reset_buf[env_ids] = 0
@@ -206,9 +234,15 @@ class JetbotTask(RLTask):
     def post_reset(self):
         #self._cart_dof_idx = self._cartpoles.get_dof_index("cartJoint")
         #self._pole_dof_idx = self._cartpoles.get_dof_index("poleJoint")
-        # self.lidarInterface = _range_sensor.acquire_lidar_sensor_interface()
-        # jetbot_paths = self._jetbots.prim_paths
-        # self._lidarpaths = [path + "/chassis/Lidar_mesh/Lidar" for path in jetbot_paths]
+        self.lidarInterface = _range_sensor.acquire_lidar_sensor_interface()
+        jetbot_paths = self._jetbots.prim_paths
+        self._lidarpaths = [path + "/chassis/Lidar" for path in jetbot_paths]
+
+        # get some initial poses
+        self.initial_root_pos, self.initial_root_rot = self._jetbots.get_world_poses()
+        self.initial_target_pos, _ = self._targets.get_world_poses()
+        #self.target_pos, _ = self._targets.get_world_poses()
+
         # randomize all envs
         indices = torch.arange(self._jetbots.count, dtype=torch.int64, device=self._device)
         self.reset_idx(indices)
@@ -234,4 +268,7 @@ class JetbotTask(RLTask):
         #resets = torch.where(torch.abs(pole_pos) > math.pi / 2, 1, resets)
         #resets = torch.where(self.progress_buf >= self._max_episode_length, 1, resets)
         
-        self.reset_buf[:] = torch.zeros(self._num_envs)
+        #self.reset_buf[:] = torch.zeros(self._num_envs)
+        resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, 0.0)
+        #print(resets)
+        return resets
