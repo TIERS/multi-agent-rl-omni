@@ -222,7 +222,6 @@ class JetbotTask(RLTask):
         self._jetbots.set_world_poses(root_pos, root_rot, indices=env_ids)
         self._jetbots.set_velocities(root_vel, indices=env_ids)
 
-
         target_pos = self.initial_target_pos[env_ids] + torch.tensor([1.5, 1.5, 0], device=self._device)
         
         self._targets.set_world_poses(target_pos, indices=env_ids)
@@ -269,6 +268,6 @@ class JetbotTask(RLTask):
         #resets = torch.where(self.progress_buf >= self._max_episode_length, 1, resets)
         
         #self.reset_buf[:] = torch.zeros(self._num_envs)
+        print(self.progress_buf)
         resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, 0.0)
-        #print(resets)
-        return resets
+        self.reset_buf[:] = resets
