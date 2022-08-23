@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+from fileinput import close
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.robots.controllers.differential_controller import DifferentialController
 
@@ -67,7 +68,9 @@ class JetbotTask(RLTask):
         self._reset_dist = self._task_cfg["env"]["resetDist"]
         self._max_push_effort = self._task_cfg["env"]["maxEffort"]
         self._max_episode_length = 1000
-        self.target_position = np.array([1.5, 1.5, 0.0])
+        
+        
+        self.collision_range = 0.11
 
         self.ranges_count = 72
         self._num_observations = self.ranges_count + 1  # +1 for angle
@@ -77,6 +80,10 @@ class JetbotTask(RLTask):
 
 
         RLTask.__init__(self, name, env)
+
+        # init tensors that need to be set to correct device
+        self.prev_goal_distance = torch.zeros(self._num_envs).to(self._device)
+        self.target_position = torch.tensor([-1.5, -1.5, 0.0]).to(self._device)
         return
 
     def set_up_scene(self, scene) -> None:
@@ -103,7 +110,7 @@ class JetbotTask(RLTask):
             "RangeSensorCreateLidar",
             path=self.default_zero_env_path + "/jetbot_with_lidar/jetbot_with_lidar/chassis/Lidar",
             parent=None,
-            min_range=0.15,
+            min_range=0.1,
             max_range=20.0,
             draw_points=False,
             draw_lines=True,
@@ -145,7 +152,7 @@ class JetbotTask(RLTask):
         #self.obs_buf[:, 2] = pole_pos
         #self.obs_buf[:, 3] = pole_vel
 
-        self.ranges = torch.zeros((self._num_envs, self.ranges_count))
+        self.ranges = torch.zeros((self._num_envs, self.ranges_count)).to(self._device)
 
         for i in range(self._num_envs):
             np_ranges = self.lidarInterface.get_linear_depth_data(self._lidarpaths[i]).squeeze()
@@ -153,29 +160,24 @@ class JetbotTask(RLTask):
         
         #print(self.ranges.shape)
 
-        self.obs_buf[:, :self.ranges_count] = self.ranges
-
-        self.positions, rotations = self._jetbots.get_world_poses()
+        self.positions, self.rotations = self._jetbots.get_world_poses()
+        self.target_positions, _ = self._targets.get_world_poses()
         yaws = []
-        for rot in rotations:
+        for rot in self.rotations:
             yaws.append(quat_to_euler_angles(rot)[2])
+        yaws = torch.tensor(yaws).to(self._device)
 
         #print("position", self.position)
         #print("yaw", yaws)
         #print("target pos", self.target_pos)
-        #goal_angles = np.arctan2(self.target_position[1] - self.position[1], self.target_position[0] - self.position[0])
+        goal_angles = torch.atan2(self.target_positions[:,1] - self.positions[:,1], self.target_positions[:,0] - self.positions[:,0])
 
-        # heading = goal_angle - yaw
-        # if heading > math.pi:
-        #     heading -= 2 * math.pi
+        headings = goal_angles - yaws
+        headings = torch.where(headings > math.pi, headings - 2 * math.pi, headings)
+        headings = torch.where(headings < -math.pi, headings + 2 * math.pi, headings)
 
-        # elif heading < -math.pi:
-        #     heading += 2 * math.pi
-        
-        # #print("heading", heading)
-
-        # #print(np.hstack((jetbot_pos, jetbot_vel)))
-        # self.obs = np.hstack((self.ranges.squeeze(), yaw))
+        obs = torch.hstack((self.ranges, headings.unsqueeze(1)))
+        self.obs_buf[:] = obs
 
         observations = {
             self._jetbots.name: {
@@ -213,7 +215,8 @@ class JetbotTask(RLTask):
 
         #self.current_step = 0
         #self.goal_reached = False
-        #self.collision = False
+        self.goal_reached = torch.zeros(self._num_envs, device=self._device)
+        self.collisions = torch.zeros(self._num_envs, device=self._device)
 
         # apply resets
         root_pos, root_rot = self.initial_root_pos[env_ids], self.initial_root_rot[env_ids]
@@ -222,7 +225,7 @@ class JetbotTask(RLTask):
         self._jetbots.set_world_poses(root_pos, root_rot, indices=env_ids)
         self._jetbots.set_velocities(root_vel, indices=env_ids)
 
-        target_pos = self.initial_target_pos[env_ids] + torch.tensor([1.5, 1.5, 0], device=self._device)
+        target_pos = self.initial_target_pos[env_ids] + self.target_position
         
         self._targets.set_world_poses(target_pos, indices=env_ids)
 
@@ -247,17 +250,22 @@ class JetbotTask(RLTask):
         self.reset_idx(indices)
 
     def calculate_metrics(self) -> None:
-        #cart_pos = self.obs_buf[:, 0]
-        #cart_vel = self.obs_buf[:, 1]
-        #pole_angle = self.obs_buf[:, 2]
-        #pole_vel = self.obs_buf[:, 3]
 
-        #reward = 1.0 - pole_angle * pole_angle - 0.01 * torch.abs(cart_vel) - 0.005 * torch.abs(pole_vel)
-        #reward = torch.where(torch.abs(cart_pos) > self._reset_dist, torch.ones_like(reward) * -2.0, reward)
-        #reward = torch.where(torch.abs(pole_angle) > np.pi / 2, torch.ones_like(reward) * -2.0, reward)
-        reward = 0.0
+        rewards = torch.zeros_like(self.rew_buf)
 
-        self.rew_buf[:] = reward
+        closest_ranges, indices = torch.min(self.ranges, 1)
+        self.collisions = torch.where(closest_ranges < self.collision_range, 1.0, 0.0).to(self._device)
+
+        goal_distances = torch.linalg.norm(self.positions - self.target_positions, dim=1).to(self._device)
+        closer_to_goal = torch.where(goal_distances < self.prev_goal_distance, 1, -1)
+        self.prev_goal_distance = goal_distances
+
+        rewards -= self.collisions * 20
+        rewards += closer_to_goal * 0.01
+
+        #print(rewards)
+
+        self.rew_buf[:] = rewards
 
     def is_done(self) -> None:
         #cart_pos = self.obs_buf[:, 0]
@@ -268,6 +276,6 @@ class JetbotTask(RLTask):
         #resets = torch.where(self.progress_buf >= self._max_episode_length, 1, resets)
         
         #self.reset_buf[:] = torch.zeros(self._num_envs)
-        print(self.progress_buf)
         resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, 0.0)
+        resets = torch.where(self.collisions.bool(), 1.0, resets.double())
         self.reset_buf[:] = resets
