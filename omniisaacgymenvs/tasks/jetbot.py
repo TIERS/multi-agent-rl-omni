@@ -83,7 +83,8 @@ class JetbotTask(RLTask):
 
         # init tensors that need to be set to correct device
         self.prev_goal_distance = torch.zeros(self._num_envs).to(self._device)
-        self.target_position = torch.tensor([-1.5, -1.5, 0.0]).to(self._device)
+        self.prev_heading = torch.zeros(self._num_envs).to(self._device)
+        self.target_position = torch.tensor([1.5, 1.5, 0.0]).to(self._device)
         return
 
     def set_up_scene(self, scene) -> None:
@@ -113,7 +114,7 @@ class JetbotTask(RLTask):
             min_range=0.1,
             max_range=20.0,
             draw_points=False,
-            draw_lines=True,
+            draw_lines=False,
             horizontal_fov=360.0,
             vertical_fov=30.0,
             horizontal_resolution=5.0,
@@ -172,11 +173,11 @@ class JetbotTask(RLTask):
         #print("target pos", self.target_pos)
         goal_angles = torch.atan2(self.target_positions[:,1] - self.positions[:,1], self.target_positions[:,0] - self.positions[:,0])
 
-        headings = goal_angles - yaws
-        headings = torch.where(headings > math.pi, headings - 2 * math.pi, headings)
-        headings = torch.where(headings < -math.pi, headings + 2 * math.pi, headings)
+        self.headings = goal_angles - yaws
+        self.headings = torch.where(self.headings > math.pi, self.headings - 2 * math.pi, self.headings)
+        self.headings = torch.where(self.headings < -math.pi, self.headings + 2 * math.pi, self.headings)
 
-        obs = torch.hstack((self.ranges, headings.unsqueeze(1)))
+        obs = torch.hstack((self.ranges, self.headings.unsqueeze(1)))
         self.obs_buf[:] = obs
 
         observations = {
@@ -259,9 +260,15 @@ class JetbotTask(RLTask):
         goal_distances = torch.linalg.norm(self.positions - self.target_positions, dim=1).to(self._device)
         closer_to_goal = torch.where(goal_distances < self.prev_goal_distance, 1, -1)
         self.prev_goal_distance = goal_distances
+        self.goal_reached = torch.where(goal_distances < 0.1, 1, 0).to(self._device)
+
+        closer_to_heading = torch.where(torch.abs(self.headings) < torch.abs(self.prev_heading), 1, -1)
+        self.prev_heading = self.headings
 
         rewards -= self.collisions * 20
         rewards += closer_to_goal * 0.01
+        rewards += closer_to_heading * 0.01
+        rewards += self.goal_reached * 20
 
         #print(rewards)
 
@@ -278,4 +285,5 @@ class JetbotTask(RLTask):
         #self.reset_buf[:] = torch.zeros(self._num_envs)
         resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, 0.0)
         resets = torch.where(self.collisions.bool(), 1.0, resets.double())
+        resets = torch.where(self.goal_reached.bool(), 1.0, resets.double())
         self.reset_buf[:] = resets

@@ -23,7 +23,7 @@ params:
           val: 0
         fixed_sigma: True
     mlp:
-      units: [32, 32]
+      units: [64, 64]
       activation: elu
       
       initializer:
@@ -61,8 +61,8 @@ params:
     entropy_coef: 0.0
     truncate_grads: True
     e_clip: 0.2
-    horizon_length: 64
-    minibatch_size: 64
+    horizon_length: 128
+    minibatch_size: 256
     mini_epochs: 8
     critic_coef: 4
     clip_value: True
