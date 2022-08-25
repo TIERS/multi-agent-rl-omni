@@ -34,9 +34,7 @@ from omniisaacgymenvs.robots.controllers.differential_controller import Differen
 from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.prims import GeometryPrimView
 from omni.isaac.core.utils.prims import get_prim_at_path
-from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.stage import add_reference_to_stage
-from omni.isaac.core.objects import VisualCuboid
 from omni.isaac.core.utils.types import ArticulationActions
 from omni.isaac.range_sensor import _range_sensor
 from omni.isaac.core.utils.rotations import quat_to_euler_angles
@@ -69,11 +67,10 @@ class JetbotTask(RLTask):
         self._max_push_effort = self._task_cfg["env"]["maxEffort"]
         self._max_episode_length = 1000
         
-        
         self.collision_range = 0.11
 
         self.ranges_count = 72
-        self._num_observations = self.ranges_count + 1  # +1 for angle
+        self._num_observations = self.ranges_count + 2 # +2 for angle and distance (polar coords)
         self._num_actions = 1
 
         self._diff_controller = DifferentialController(name="simple_control",wheel_radius=0.03, wheel_base=0.1125)
@@ -95,12 +92,11 @@ class JetbotTask(RLTask):
         scene.add(self._jetbots)
 
     def add_prims_to_stage(self, scene):
-        #cartpole = Cartpole(prim_path=self.default_zero_env_path + "/Cartpole", name="Cartpole", translation=self._cartpole_positions)
         # applies articulation settings from the task configuration yaml file
         #self._sim_config.apply_articulation_settings("Cartpole", get_prim_at_path(cartpole.prim_path), self._sim_config.parse_actor_config("Cartpole"))
+        
         asset_path = "/home/eetu/jetbot_isaac/content/jetbot_with_lidar.usd"
         add_reference_to_stage(usd_path=asset_path, prim_path=self.default_zero_env_path + "/jetbot_with_lidar")
-
 
         add_reference_to_stage(
             usd_path="/home/eetu/jetbot_isaac/content/obstacles.usd",
@@ -131,28 +127,8 @@ class JetbotTask(RLTask):
             prim_path=self.default_zero_env_path + "/target_cube",
         )
 
-        # scene.add(VisualCuboid(
-        #         prim_path=self.default_zero_env_path + "/target_cube", # The prim path of the cube in the USD stage
-        #         name="target_cube", # The unique name used to retrieve the object from the scene later on
-        #         position=self.target_position, # Using the current stage units which is in meters by default.
-        #         size=np.array([0.1, 0.1, 0.1]), # most arguments accept mainly numpy arrays.
-        #         color=np.array([1.0, 0, 0]), # RGB channels, going from 0-1
-        # ))
 
     def get_observations(self) -> dict:
-        #dof_pos = self._cartpoles.get_joint_positions(clone=False)
-        #dof_vel = self._cartpoles.get_joint_velocities(clone=False)
-
-        #cart_pos = dof_pos[:, self._cart_dof_idx]
-        #cart_vel = dof_vel[:, self._cart_dof_idx]
-        #pole_pos = dof_pos[:, self._pole_dof_idx]
-        #pole_vel = dof_vel[:, self._pole_dof_idx]
-
-        #self.obs_buf[:, 0] = cart_pos
-        #self.obs_buf[:, 1] = cart_vel
-        #self.obs_buf[:, 2] = pole_pos
-        #self.obs_buf[:, 3] = pole_vel
-
         self.ranges = torch.zeros((self._num_envs, self.ranges_count)).to(self._device)
 
         for i in range(self._num_envs):
@@ -177,7 +153,9 @@ class JetbotTask(RLTask):
         self.headings = torch.where(self.headings > math.pi, self.headings - 2 * math.pi, self.headings)
         self.headings = torch.where(self.headings < -math.pi, self.headings + 2 * math.pi, self.headings)
 
-        obs = torch.hstack((self.ranges, self.headings.unsqueeze(1)))
+        self.goal_distances = torch.linalg.norm(self.positions - self.target_positions, dim=1).to(self._device)
+
+        obs = torch.hstack((self.ranges, self.headings.unsqueeze(1), self.goal_distances.unsqueeze(1)))
         self.obs_buf[:] = obs
 
         observations = {
@@ -193,10 +171,6 @@ class JetbotTask(RLTask):
             self.reset_idx(reset_env_ids)
 
         actions = actions.to(self._device)
-        
-
-        # forces = torch.zeros((self._cartpoles.count, self._cartpoles.num_dof), dtype=torch.float32, device=self._device)
-        # forces[:, self._cart_dof_idx] = self._max_push_effort * actions[:, 0]
 
         indices = torch.arange(self._jetbots.count, dtype=torch.int32, device=self._device)
         # self._cartpoles.set_joint_efforts(forces, indices=indices)
@@ -214,8 +188,6 @@ class JetbotTask(RLTask):
     def reset_idx(self, env_ids):
         num_resets = len(env_ids)
 
-        #self.current_step = 0
-        #self.goal_reached = False
         self.goal_reached = torch.zeros(self._num_envs, device=self._device)
         self.collisions = torch.zeros(self._num_envs, device=self._device)
 
@@ -235,8 +207,6 @@ class JetbotTask(RLTask):
         self.progress_buf[env_ids] = 0
 
     def post_reset(self):
-        #self._cart_dof_idx = self._cartpoles.get_dof_index("cartJoint")
-        #self._pole_dof_idx = self._cartpoles.get_dof_index("poleJoint")
         self.lidarInterface = _range_sensor.acquire_lidar_sensor_interface()
         jetbot_paths = self._jetbots.prim_paths
         self._lidarpaths = [path + "/chassis/Lidar" for path in jetbot_paths]
@@ -251,37 +221,32 @@ class JetbotTask(RLTask):
         self.reset_idx(indices)
 
     def calculate_metrics(self) -> None:
-
         rewards = torch.zeros_like(self.rew_buf)
 
         closest_ranges, indices = torch.min(self.ranges, 1)
         self.collisions = torch.where(closest_ranges < self.collision_range, 1.0, 0.0).to(self._device)
 
-        goal_distances = torch.linalg.norm(self.positions - self.target_positions, dim=1).to(self._device)
-        closer_to_goal = torch.where(goal_distances < self.prev_goal_distance, 1, -1)
-        self.prev_goal_distance = goal_distances
-        self.goal_reached = torch.where(goal_distances < 0.1, 1, 0).to(self._device)
+        closer_to_goal = torch.where(self.goal_distances < self.prev_goal_distance, 1, -1)
+        self.prev_goal_distance = self.goal_distances
+        self.goal_reached = torch.where(self.goal_distances < 0.1, 1, 0).to(self._device)
 
-        closer_to_heading = torch.where(torch.abs(self.headings) < torch.abs(self.prev_heading), 1, -1)
+        closer_to_heading = torch.where(torch.abs(self.headings) < torch.abs(self.prev_heading), 1, 0)
+        correct_heading = torch.where(torch.abs(self.headings) < 0.2, 1, 0)
+        heading_bonus = torch.where(torch.logical_or(correct_heading, closer_to_heading), 1, -1)
+
         self.prev_heading = self.headings
 
         rewards -= self.collisions * 20
-        rewards += closer_to_goal * 0.01
-        rewards += closer_to_heading * 0.01
+        rewards += closer_to_goal * 0.005
+        #rewards += closer_to_heading * 0.01
+        rewards += heading_bonus * 0.005
         rewards += self.goal_reached * 20
 
-        #print(rewards)
+        #print("collisions", self.collisions[0].item(), "closer to goal", closer_to_goal[0].item(), "heading bonus", heading_bonus[0].item(), "heading", self.headings[0].item())
 
         self.rew_buf[:] = rewards
 
     def is_done(self) -> None:
-        #cart_pos = self.obs_buf[:, 0]
-        #pole_pos = self.obs_buf[:, 2]
-
-        #resets = torch.where(torch.abs(cart_pos) > self._reset_dist, 1, 0)
-        #resets = torch.where(torch.abs(pole_pos) > math.pi / 2, 1, resets)
-        #resets = torch.where(self.progress_buf >= self._max_episode_length, 1, resets)
-        
         #self.reset_buf[:] = torch.zeros(self._num_envs)
         resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, 0.0)
         resets = torch.where(self.collisions.bool(), 1.0, resets.double())
