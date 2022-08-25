@@ -40,7 +40,7 @@ def initialize_task(config, env, init_sim=True):
     from omniisaacgymenvs.tasks.quadcopter import QuadcopterTask
     from omniisaacgymenvs.tasks.shadow_hand import ShadowHandTask
     from omniisaacgymenvs.tasks.crazyflie import CrazyflieTask
-        from omniisaacgymenvs.tasks.jetbot import JetbotTask
+    from omniisaacgymenvs.tasks.jetbot import JetbotTask
 
     # Mappings from strings to environments
     task_map = {
