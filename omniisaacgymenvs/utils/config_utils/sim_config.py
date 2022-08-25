@@ -29,8 +29,9 @@
 
 from omniisaacgymenvs.utils.config_utils.default_scene_params import *
 import copy
-
 import omni.usd
+import numpy as np
+import torch
 
 class SimConfig():
     def __init__(self, config: dict = None):
@@ -40,9 +41,14 @@ class SimConfig():
         self._config = config
         self._cfg = config.get("task", dict())
         self._parse_config()
-        
+
         if self._config["test"] == True:
             self._sim_params["enable_scene_query_support"] = True
+
+        if self._config["headless"] == True and not self._sim_params["enable_cameras"]:
+            self._sim_params["use_flatcache"] = False
+            self._sim_params["enable_viewport"] = False
+
 
     def _parse_config(self):
         # general sim parameter

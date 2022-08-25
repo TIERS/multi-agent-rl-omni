@@ -21,7 +21,7 @@ physics_engine: 'physx'
 pipeline: 'gpu'
 # whether to use cpu or gpu physx
 sim_device: 'gpu'
-# used for gpu pipeline only - device id for running sim and task
+# used for gpu simulation only - device id for running sim and task if pipeline=gpu
 device_id: 0
 # device to run RL
 rl_device: 'cuda:0'
@@ -38,6 +38,12 @@ checkpoint: ''
 
 # disables rendering
 headless: False
+
+wandb_activate: False
+wandb_group: ''
+wandb_name: ${train.params.config.name}
+wandb_entity: ''
+wandb_project: 'omniisaacgymenvs'
 
 # set default task and default training config based on task
 defaults:

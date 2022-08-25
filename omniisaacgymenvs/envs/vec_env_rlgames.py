@@ -32,6 +32,8 @@ from omni.isaac.gym.vec_env import VecEnvBase
 import torch
 import numpy as np
 
+from datetime import datetime
+
 
 # VecEnv Wrapper for RL training
 class VecEnvRLGames(VecEnvBase):
@@ -53,13 +55,21 @@ class VecEnvRLGames(VecEnvBase):
 
     def step(self, actions):
         actions = torch.clamp(actions, -self._task.clip_actions, self._task.clip_actions).to(self._task.device).clone()
-        self._task.pre_physics_step(actions)
 
+        if self._task.randomize_actions:
+            actions = self._task._dr_randomizer.apply_actions_randomization(actions=actions, reset_buf=self._task.reset_buf)
+
+        self._task.pre_physics_step(actions)
+        
         for _ in range(self._task.control_frequency_inv):
             self._world.step(render=self._render)
             self.sim_frame_count += 1
 
         self._obs, self._rew, self._resets, self._extras = self._task.post_physics_step()
+
+        if self._task.randomize_observations:
+            self._obs = self._task._dr_randomizer.apply_observations_randomization(observations=self._obs, reset_buf=self._task.reset_buf)
+
         self._states = self._task.get_states()
         self._process_data()
         
@@ -69,6 +79,9 @@ class VecEnvRLGames(VecEnvBase):
 
     def reset(self):
         """ Resets the task and applies default zero actions to recompute observations and states. """
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{now}] Running RL reset")
+
         self._task.reset()
         actions = torch.zeros((self.num_envs, self._task.num_actions), device=self._task.device)
         obs_dict, _, _, _ = self.step(actions)

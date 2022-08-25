@@ -40,6 +40,7 @@ import numpy as np
 import torch
 import math
 
+import omni.replicator.isaac as dr
 
 class InHandManipulationTask(RLTask):
     def __init__(
@@ -94,6 +95,7 @@ class InHandManipulationTask(RLTask):
         self.reset_goal_buf = self.reset_buf.clone()
         self.successes = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
         self.consecutive_successes = torch.zeros(1, dtype=torch.float, device=self.device)
+        self.randomization_buf = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
 
         self.av_factor = torch.tensor(self.av_factor, dtype=torch.float, device=self.device)
         self.total_successes = 0
@@ -111,10 +113,22 @@ class InHandManipulationTask(RLTask):
    
         self._hands = self.get_hand_view(scene)
         scene.add(self._hands)
-        self._objects = RigidPrimView(prim_paths_expr="/World/envs/env_.*/object/object", name="object_view")
+        self._objects = RigidPrimView(
+            prim_paths_expr="/World/envs/env_.*/object/object",
+            name="object_view", 
+            reset_xform_properties=False,
+            masses=torch.tensor([0.07087]*self._num_envs, device=self.device),
+        )
         scene.add(self._objects)
-        self._goals = RigidPrimView(prim_paths_expr="/World/envs/env_.*/goal/object", name="goal_view")
+        self._goals = RigidPrimView(
+            prim_paths_expr="/World/envs/env_.*/goal/object", 
+            name="goal_view", 
+            reset_xform_properties=False
+        )
         scene.add(self._goals)
+   
+        if self._dr_randomizer.randomize:
+            self._dr_randomizer.apply_on_startup_domain_randomization(self)
     
     @abstractmethod
     def get_hand(self):
@@ -136,11 +150,11 @@ class InHandManipulationTask(RLTask):
         self.object_usd_path = f"{self._assets_root_path}/Isaac/Props/Blocks/block_instanceable.usd"
         add_reference_to_stage(self.object_usd_path, self.default_zero_env_path + "/object")
         obj = XFormPrim(
-            prim_path=self.default_zero_env_path + "/object",
+            prim_path=self.default_zero_env_path + "/object/object",
             name="object",
             translation=self.object_start_translation,
             orientation=self.object_start_orientation,
-            scale=self.object_scale
+            scale=self.object_scale,
         )
         self._sim_config.apply_articulation_settings("object", get_prim_at_path(obj.prim_path), self._sim_config.parse_actor_config("object"))
     
@@ -189,6 +203,9 @@ class InHandManipulationTask(RLTask):
         indices = torch.arange(self._num_envs, dtype=torch.int64, device=self._device)
         self.reset_idx(indices)
 
+        if self._dr_randomizer.randomize:
+            self._dr_randomizer.set_up_domain_randomization(self)
+
     def get_object_goal_observations(self):
         self.object_pos, self.object_rot = self._objects.get_world_poses(clone=False)
         self.object_pos -= self._env_pos
@@ -206,6 +223,7 @@ class InHandManipulationTask(RLTask):
         )
 
         self.extras['consecutive_successes'] = self.consecutive_successes.mean()
+        self.randomization_buf += 1
 
         if self.print_success_stat:
             self.total_resets = self.total_resets + self.reset_buf.sum()
@@ -219,6 +237,8 @@ class InHandManipulationTask(RLTask):
     def pre_physics_step(self, actions):
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         goal_env_ids = self.reset_goal_buf.nonzero(as_tuple=False).squeeze(-1)
+
+        reset_buf = self.reset_buf.clone()
 
         # if only goals need reset, then call set API
         if len(goal_env_ids) > 0 and len(env_ids) == 0:
@@ -247,7 +267,13 @@ class InHandManipulationTask(RLTask):
         self._hands.set_joint_position_targets(
             self.cur_targets[:, self.actuated_dof_indices], indices=None, joint_indices=self.actuated_dof_indices
         )
-        
+
+        if self._dr_randomizer.randomize:
+            rand_envs = torch.where(self.randomization_buf >= self._dr_randomizer.min_frequency, torch.ones_like(self.randomization_buf), torch.zeros_like(self.randomization_buf))
+            rand_env_ids = torch.nonzero(torch.logical_and(rand_envs, reset_buf))
+            dr.physics_view.step_randomization(rand_env_ids)
+            self.randomization_buf[rand_env_ids] = 0
+
     def is_done(self):
         pass
 
@@ -358,11 +384,11 @@ def compute_hand_reward(
         # Reset progress buffer on goal envs if max_consecutive_successes > 0
         progress_buf = torch.where(torch.abs(rot_dist) <= success_tolerance, torch.zeros_like(progress_buf), progress_buf)
         resets = torch.where(successes >= max_consecutive_successes, torch.ones_like(resets), resets)
-    resets = torch.where(progress_buf >= max_episode_length, torch.ones_like(resets), resets)
+    resets = torch.where(progress_buf >= max_episode_length - 1, torch.ones_like(resets), resets)
 
     # Apply penalty for not reaching the goal
     if max_consecutive_successes > 0:
-        reward = torch.where(progress_buf >= max_episode_length, reward + 0.5 * fall_penalty, reward)
+        reward = torch.where(progress_buf >= max_episode_length - 1, reward + 0.5 * fall_penalty, reward)
 
     num_resets = torch.sum(resets)
     finished_cons_successes = torch.sum(successes * resets.float())

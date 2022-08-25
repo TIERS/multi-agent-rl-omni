@@ -27,18 +27,46 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-import omni.client
+from typing import Optional
 
-def is_valid_ov_file(path):
-	result, entry = omni.client.stat(path)
-	return result == omni.client.Result.OK
+from omni.isaac.core.robots.robot import Robot
+from omni.isaac.core.utils.nucleus import get_assets_root_path
+from omni.isaac.core.utils.stage import add_reference_to_stage
 
-def download_ov_file(source_path, target_path):
-	result = omni.client.copy(source_path, target_path)
+import numpy as np
+import torch
+import carb
 
-	if result == omni.client.Result.OK:
-		return True
-	return False
 
-def break_ov_path(path):
-	return omni.client.break_url(path)
+class Crazyflie(Robot):
+    def __init__(
+        self,
+        prim_path: str,
+        name: Optional[str] = "crazyflie",
+        usd_path: Optional[str] = None,
+        translation: Optional[np.ndarray] = None,
+        orientation: Optional[np.ndarray] = None,
+        scale: Optional[np.array] = None
+    ) -> None:
+        """[summary]
+        """
+        
+        self._usd_path = usd_path
+        self._name = name
+
+        if self._usd_path is None:
+            assets_root_path = get_assets_root_path()
+            if assets_root_path is None:
+                carb.log_error("Could not find Isaac Sim assets folder")
+            self._usd_path = assets_root_path + "/Isaac/Robots/Crazyflie/cf2x.usd"
+
+        add_reference_to_stage(self._usd_path, prim_path)
+        scale = torch.tensor([5, 5, 5])
+
+        super().__init__(
+            prim_path=prim_path,
+            name=name,
+            translation=translation,
+            orientation=orientation,
+            scale=scale
+        )

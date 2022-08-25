@@ -14,14 +14,14 @@ INSTALL_REQUIRES = [
     "omegaconf==2.1.1",
     "hydra-core==1.1.1",
     "redis==3.5.3", # needed by Ray on Windows
-    "rl-games==1.4.0"
+    "rl-games==1.5.2"
 ]
 
 # Installation operation
 setup(
     name="omniisaacgymenvs",
     author="NVIDIA",
-    version="1.0.0",
+    version="1.1.0",
     description="RL environments for robot learning in NVIDIA Isaac Sim.",
     keywords=["robotics", "rl"],
     include_package_data=True,

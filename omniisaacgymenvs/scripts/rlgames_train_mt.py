@@ -40,6 +40,8 @@ from omegaconf import DictConfig
 from rl_games.common import env_configurations, vecenv
 from rl_games.torch_runner import Runner
 
+import copy
+import datetime
 import os
 import threading
 import queue
@@ -70,7 +72,7 @@ class RLGTrainer():
     def run(self):
         # create runner and set the settings
         runner = Runner(RLGPUAlgoObserver())
-        runner.load(self.rlg_config_dict)
+        runner.load(copy.deepcopy(self.rlg_config_dict))
         runner.reset()
 
         # dump config dict
@@ -79,12 +81,34 @@ class RLGTrainer():
         with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
             f.write(OmegaConf.to_yaml(self.cfg))
 
+        time_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        if self.cfg.wandb_activate:
+            # Make sure to install WandB if you actually use this.
+            import wandb
+
+            run_name = f"{self.cfg.wandb_name}_{time_str}"
+
+            wandb.init(
+                project=self.cfg.wandb_project,
+                group=self.cfg.wandb_group,
+                entity=self.cfg.wandb_entity,
+                config=self.cfg_dict,
+                sync_tensorboard=True,
+                id=run_name,
+                resume="allow",
+                monitor_gym=True,
+            )
+
         runner.run({
             'train': not self.cfg.test,
             'play': self.cfg.test,
             'checkpoint': self.cfg.checkpoint,
             'sigma': None
         })
+
+        if self.cfg.wandb_activate:
+            wandb.finish()
 
 
 class Trainer(TrainerMT):
@@ -155,6 +179,9 @@ class PPOTrainer(threading.Thread):
 @hydra.main(config_name="config", config_path="../cfg")
 def parse_hydra_configs(cfg: DictConfig):
 
+    headless = cfg.headless
+    env = VecEnvRLGamesMT(headless=headless, sim_device=cfg.device_id)
+
     # ensure checkpoints can be specified as relative paths
     if cfg.checkpoint:
         cfg.checkpoint = retrieve_checkpoint_path(cfg.checkpoint)
@@ -163,9 +190,6 @@ def parse_hydra_configs(cfg: DictConfig):
 
     cfg_dict = omegaconf_to_dict(cfg)
     print_dict(cfg_dict)
-
-    headless = cfg.headless
-    env = VecEnvRLGamesMT(headless)
 
     # sets seed. if seed is -1 will pick a random one
     from omni.isaac.core.utils.torch.maths import set_seed

@@ -5,7 +5,7 @@ physics_engine: ${..physics_engine}
 
 # if given, will override the device setting in gym.
 env:
-  numEnvs: ${resolve_default:2048,${...num_envs}}
+  numEnvs: ${resolve_default:8192,${...num_envs}}
   envSpacing: 0.75
   episodeLength: 600
 
@@ -42,11 +42,11 @@ env:
   velObsScale: 0.2
  
   objectType: "block"
-  observationType: "full" # can be "full_no_vel", "full"
+  observationType: "full" # can be "full_no_vel", "full", "openai", "full_state"
+  asymmetric_observations: False
   successTolerance: 0.1
   printNumSuccesses: False
   maxConsecutiveSuccesses: 0
-
 
 sim:
   dt: 0.0083 # 1/120 s
@@ -55,6 +55,9 @@ sim:
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
   use_flatcache: True
   enable_scene_query_support: False
+
+  # set to True if you use camera sensors in the environment
+  enable_cameras: False
 
   default_material:
     static_friction: 1.0
@@ -75,7 +78,7 @@ sim:
     gpu_max_rigid_contact_count: 524288
     gpu_max_rigid_patch_count: 33554432
     gpu_found_lost_pairs_capacity: 8192
-    gpu_found_lost_aggregate_pairs_capacity: 262144
+    gpu_found_lost_aggregate_pairs_capacity: 524288
     gpu_total_aggregate_pairs_capacity: 1048576
     gpu_max_soft_body_contacts: 1048576
     gpu_max_particle_contacts: 1048576
@@ -88,7 +91,7 @@ sim:
     override_usd_defaults: False
     fixed_base: False
     enable_self_collisions: True
-    enable_gyroscopic_forces: False
+    enable_gyroscopic_forces: True
     # also in stage params
     # per-actor
     solver_position_iteration_count: 8
@@ -128,3 +131,91 @@ sim:
     # per-body
     density: -1
     max_depenetration_velocity: 1000.0
+
+domain_randomization:
+  randomize: False
+  min_frequency: 720
+  randomization_params:
+    observations:
+      on_reset:
+        operation: "additive"
+        distribution: "gaussian"
+        distribution_parameters: [0, .0001]
+      on_interval:
+        frequency_interval: 1
+        operation: "additive"
+        distribution: "gaussian"
+        distribution_parameters: [0, .002]
+    actions:
+      on_reset:
+        operation: "additive"
+        distribution: "gaussian"
+        distribution_parameters: [0, 0.015]
+      on_interval:
+        frequency_interval: 1
+        operation: "additive"
+        distribution: "gaussian"
+        distribution_parameters: [0., 0.05]
+    simulation:
+      gravity:
+        on_interval:
+          frequency_interval: 720
+          operation: "additive"
+          distribution: "gaussian"
+          distribution_parameters: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.4]]
+    rigid_prim_views:
+      object_view:
+        material_properties:
+          on_reset:
+            num_buckets: 250
+            operation: "scaling"
+            distribution: "uniform"
+            distribution_parameters: [[0.7, 1, 1], [1.3, 1, 1]]
+        scale:
+          on_startup:
+            operation: "scaling"
+            distribution: "uniform"
+            distribution_parameters: [0.95, 1.05]
+        mass:
+          on_startup:
+            operation: "scaling"
+            distribution: "uniform"
+            distribution_parameters: [0.5, 1.5]
+    articulation_views:
+      shadow_hand_view:
+        stiffness:
+          on_reset:
+            operation: "scaling"
+            distribution: "loguniform"
+            distribution_parameters: [0.75, 1.5]
+        damping:
+          on_reset:
+            operation: "scaling"
+            distribution: "loguniform"
+            distribution_parameters: [0.3, 3.0]
+        lower_dof_limits:
+          on_reset:
+            operation: "additive"
+            distribution: "gaussian"
+            distribution_parameters: [0.00, 0.01]
+        upper_dof_limits:
+          on_reset:
+            operation: "additive"
+            distribution: "gaussian"
+            distribution_parameters: [0.00, 0.01]
+        tendon_stiffnesses:
+          on_reset:
+            operation: "scaling"
+            distribution: "loguniform"
+            distribution_parameters: [0.75, 1.5]
+        tendon_dampings:
+          on_reset:
+            operation: "scaling"
+            distribution: "loguniform"
+            distribution_parameters: [0.3, 3.0]
+        material_properties:
+          on_reset:
+            num_buckets: 250
+            operation: "scaling"
+            distribution: "uniform"
+            distribution_parameters: [[0.7, 1, 1], [1.3, 1, 1]]

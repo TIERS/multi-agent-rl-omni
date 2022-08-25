@@ -36,6 +36,7 @@ from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.core.utils.prims import define_prim
 from omni.isaac.cloner import GridCloner
 from omniisaacgymenvs.tasks.utils.usd_utils import create_distant_light
+from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
 import omni.kit
 
 class RLTask(BaseTask):
@@ -59,7 +60,11 @@ class RLTask(BaseTask):
 
         self.test = self._cfg["test"]
         self._device = self._cfg["sim_device"]
+        self._dr_randomizer = Randomizer(self._sim_config)
         print("Task Device:", self._device)
+
+        self.randomize_actions = False
+        self.randomize_observations = False
 
         self.clip_obs = self._cfg["task"]["env"].get("clipObservations", np.Inf)
         self.clip_actions = self._cfg["task"]["env"].get("clipActions", np.Inf)
@@ -126,9 +131,10 @@ class RLTask(BaseTask):
             create_distant_light()
     
     def set_initial_camera_params(self, camera_position=[10, 10, 3], camera_target=[0, 0, 0]):
-        viewport = omni.kit.viewport_legacy.get_default_viewport_window()
-        viewport.set_camera_position("/OmniverseKit_Persp", camera_position[0], camera_position[1], camera_position[2], True)
-        viewport.set_camera_target("/OmniverseKit_Persp", camera_target[0], camera_target[1], camera_target[2], True)
+        if self._env._render:
+            viewport = omni.kit.viewport_legacy.get_default_viewport_window()
+            viewport.set_camera_position("/OmniverseKit_Persp", camera_position[0], camera_position[1], camera_position[2], True)
+            viewport.set_camera_target("/OmniverseKit_Persp", camera_target[0], camera_target[1], camera_target[2], True)
 
     @property
     def default_base_env_path(self):
