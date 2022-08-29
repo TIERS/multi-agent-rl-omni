@@ -85,6 +85,7 @@ class JetbotTask(RLTask):
         return
 
     def set_up_scene(self, scene) -> None:
+        """Add prims to the scene and add views for interracting with them. Views are useful to interract with multiple prims at once."""
         self.add_prims_to_stage(scene)
         super().set_up_scene(scene)
         self._jetbots = ArticulationView(prim_paths_expr="/World/envs/.*/jetbot_with_lidar/jetbot_with_lidar", name="jetbot_view")
@@ -129,6 +130,7 @@ class JetbotTask(RLTask):
 
 
     def get_observations(self) -> dict:
+        """Return lidar ranges and polar coordinates as observations to RL agent."""
         self.ranges = torch.zeros((self._num_envs, self.ranges_count)).to(self._device)
 
         for i in range(self._num_envs):
@@ -166,6 +168,7 @@ class JetbotTask(RLTask):
         return observations
 
     def pre_physics_step(self, actions) -> None:
+        """Perform actions to move the robot."""
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
             self.reset_idx(reset_env_ids)
@@ -186,6 +189,7 @@ class JetbotTask(RLTask):
         #self._jetbots.apply_action(self._diff_controller.forward(np.array([0.2, 0.0])))
 
     def reset_idx(self, env_ids):
+        """Resetting the environment at the beginning of episode."""
         num_resets = len(env_ids)
 
         self.goal_reached = torch.zeros(self._num_envs, device=self._device)
@@ -207,6 +211,7 @@ class JetbotTask(RLTask):
         self.progress_buf[env_ids] = 0
 
     def post_reset(self):
+        """This is run when first starting the simulation before first episode."""
         self.lidarInterface = _range_sensor.acquire_lidar_sensor_interface()
         jetbot_paths = self._jetbots.prim_paths
         self._lidarpaths = [path + "/chassis/Lidar" for path in jetbot_paths]
@@ -221,6 +226,7 @@ class JetbotTask(RLTask):
         self.reset_idx(indices)
 
     def calculate_metrics(self) -> None:
+        """Calculate rewards for the RL agent."""
         rewards = torch.zeros_like(self.rew_buf)
 
         closest_ranges, indices = torch.min(self.ranges, 1)
@@ -247,6 +253,7 @@ class JetbotTask(RLTask):
         self.rew_buf[:] = rewards
 
     def is_done(self) -> None:
+        """Flags the environnments in which the episode should end."""
         #self.reset_buf[:] = torch.zeros(self._num_envs)
         resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, 0.0)
         resets = torch.where(self.collisions.bool(), 1.0, resets.double())
