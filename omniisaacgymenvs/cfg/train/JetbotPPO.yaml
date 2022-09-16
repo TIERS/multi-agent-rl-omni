@@ -42,8 +42,8 @@ params:
     env_name: rlgpu
     ppo: True
     mixed_precision: False
-    normalize_input: True
-    normalize_value: True
+    normalize_input: False
+    normalize_value: False
     num_actors: ${....task.env.numEnvs}
     reward_shaper:
       scale_value: 0.1
@@ -54,7 +54,7 @@ params:
     lr_schedule: adaptive
     kl_threshold: 0.008
     score_to_win: 20000
-    max_epochs: ${resolve_default:100,${....max_iterations}}
+    max_epochs: ${resolve_default:200,${....max_iterations}}
     save_best_after: 50
     save_frequency: 25
     grad_norm: 1.0
@@ -62,7 +62,7 @@ params:
     truncate_grads: True
     e_clip: 0.2
     horizon_length: 128
-    minibatch_size: 4096
+    minibatch_size: 128
     mini_epochs: 4
     critic_coef: 2
     clip_value: True
