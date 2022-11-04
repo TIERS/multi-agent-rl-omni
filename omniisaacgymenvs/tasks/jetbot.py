@@ -67,7 +67,7 @@ class JetbotTask(RLTask):
         self._max_push_effort = self._task_cfg["env"]["maxEffort"]
         self._max_episode_length = 1000
         
-        self.collision_range = 0.11
+        self.collision_range = 0.22 # 0.11 or 0.20
 
         self.ranges_count = 72
         self._num_observations = self.ranges_count + 2 # +2 for angle and distance (polar coords)
@@ -109,7 +109,7 @@ class JetbotTask(RLTask):
             path=self.default_zero_env_path + "/jetbot_with_lidar/jetbot_with_lidar/chassis/Lidar",
             parent=None,
             min_range=0.1,
-            max_range=20.0,
+            max_range=20.0,     
             draw_points=False,
             draw_lines=False,
             horizontal_fov=360.0,
@@ -187,6 +187,11 @@ class JetbotTask(RLTask):
         #joint_velocities = torch.tensor([[1.0, 1.0], [1.0, 1.0], [1.0, 1.0], [1.0, 1.0]]) * 10
         self._jetbots.set_joint_velocities(controls)
         #self._jetbots.apply_action(self._diff_controller.forward(np.array([0.2, 0.0])))
+        
+        # may not be needed for obs and actions randomization
+        #if self._dr_randomizer.randomize:
+            #print("randomize reset env ids", reset_env_ids)
+            #omni.replicator.isaac.physics_view.step_randomization(reset_env_ids)
 
     def reset_idx(self, env_ids):
         """Resetting the environment at the beginning of episode."""
@@ -198,7 +203,7 @@ class JetbotTask(RLTask):
         # apply resets
         root_pos, root_rot = self.initial_root_pos[env_ids], self.initial_root_rot[env_ids]
         root_vel = torch.zeros((num_resets, 6), device=self._device)
-
+        #  + torch.tensor([-0.2, -0.3, 0.0], device=self._device)
         self._jetbots.set_world_poses(root_pos, root_rot, indices=env_ids)
         self._jetbots.set_velocities(root_vel, indices=env_ids)
 
@@ -224,6 +229,9 @@ class JetbotTask(RLTask):
         # randomize all envs
         indices = torch.arange(self._jetbots.count, dtype=torch.int64, device=self._device)
         self.reset_idx(indices)
+
+        if self._dr_randomizer.randomize:
+            self._dr_randomizer.set_up_domain_randomization(self)
 
     def calculate_metrics(self) -> None:
         """Calculate rewards for the RL agent."""
@@ -255,7 +263,7 @@ class JetbotTask(RLTask):
     def is_done(self) -> None:
         """Flags the environnments in which the episode should end."""
         #self.reset_buf[:] = torch.zeros(self._num_envs)
-        resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, 0.0)
+        resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, self.reset_buf.double())
         resets = torch.where(self.collisions.bool(), 1.0, resets.double())
         resets = torch.where(self.goal_reached.bool(), 1.0, resets.double())
         self.reset_buf[:] = resets

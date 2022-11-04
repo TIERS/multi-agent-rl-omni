@@ -40,9 +40,36 @@ from omegaconf import DictConfig
 from rl_games.common import env_configurations, vecenv
 from rl_games.torch_runner import Runner
 
+import onnx
+import onnxruntime as ort
+
 import datetime
 import os
 import torch
+import numpy as np
+from matplotlib import pyplot as plt
+
+
+class ModelWrapper(torch.nn.Module):
+    '''
+    Main idea is to ignore outputs which we don't need from model
+    '''
+    def __init__(self, model):
+        torch.nn.Module.__init__(self)
+        self._model = model
+        
+        
+    def forward(self,input_dict):
+        input_dict['obs'] = self._model.norm_obs(input_dict['obs'])
+        '''
+        just model export doesn't work. Looks like onnx issue with torch distributions
+        thats why we are exporting only neural network
+        '''
+        #print(input_dict)
+        #output_dict = self._model.a2c_network(input_dict)
+        #input_dict['is_train'] = False
+        #return output_dict['logits'], output_dict['values']
+        return self._model.a2c_network(input_dict)
 
 class RLGTrainer():
     def __init__(self, cfg, cfg_dict):
@@ -76,12 +103,102 @@ class RLGTrainer():
         with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
             f.write(OmegaConf.to_yaml(self.cfg))
 
-        runner.run({
-            'train': not self.cfg.test,
-            'play': self.cfg.test,
-            'checkpoint': self.cfg.checkpoint,
-            'sigma': None
-        })
+        agent = runner.create_player()
+        agent.restore(self.cfg.checkpoint)
+
+        import rl_games.algos_torch.flatten as flatten
+        inputs = {
+            'obs' : torch.zeros((1,) + agent.obs_shape).to(agent.device),
+            'rnn_states' : agent.states,
+        }
+        with torch.no_grad():
+            adapter = flatten.TracingAdapter(ModelWrapper(agent.model), inputs,allow_non_tensor=True)
+            traced = torch.jit.trace(adapter, adapter.flattened_inputs,check_trace=False)
+            flattened_outputs = traced(*adapter.flattened_inputs)
+            print(flattened_outputs)
+        
+        torch.onnx.export(traced, *adapter.flattened_inputs, "jetbot.onnx", verbose=True, input_names=['obs'], output_names=['mu', 'log_std', 'value'])
+
+        onnx_model = onnx.load("jetbot.onnx")
+
+        # Check that the model is well formed
+        onnx.checker.check_model(onnx_model)
+
+        ort_model = ort.InferenceSession("jetbot.onnx")
+
+        outputs = ort_model.run(
+            None,
+            {"obs": np.zeros((1, 74)).astype(np.float32)},
+        )
+        print(outputs)
+        #action = np.argmax(outputs[0])
+        #print(action)
+
+        #input()
+
+        is_done = False
+        env = agent.env
+        obs = env.reset()
+        #obs, reward, done, info = env.step(torch.tensor([[0.0]]))
+        print(obs)
+
+        obs = env.reset()
+        #obs, reward, done, info = env.step(torch.tensor([[0.0]]))
+        print(obs)
+        
+        #input()
+        #input()
+        #prev_screen = env.render(mode='rgb_array')
+        #plt.imshow(prev_screen)
+        total_reward = 0
+        num_steps = 0
+        while not is_done:
+            outputs = ort_model.run(None, {"obs": obs["obs"].cpu().numpy()},)
+            mu = outputs[0].squeeze(1)
+            sigma = np.exp(outputs[1].squeeze(1))
+            action = np.random.normal(mu, sigma)
+            action = torch.tensor(action)
+            print(action )
+            #print(obs)
+            #self.polar_to_cartesian_coordinate(obs["obs"].cpu().numpy().squeeze()[:36], -np.pi, 0)
+            #input()
+            obs, reward, done, info = env.step(action)
+            total_reward += reward
+            num_steps += 1
+            is_done = done
+            #screen = env.render(mode='rgb_array')
+            #plt.imshow(screen)
+            #display.display(plt.gcf())
+            #display.clear_output(wait=True)
+        print(total_reward, num_steps)
+        #ipythondisplay.clear_output(wait=True)
+
+        # runner.run({
+        #     'train': not self.cfg.test,
+        #     'play': self.cfg.test,
+        #     'checkpoint': self.cfg.checkpoint,
+        #     'sigma': None
+        # })
+    
+    def polar_to_cartesian_coordinate(self, ranges, angle_min, angle_max):
+        angle_step = (angle_max - angle_min) / len(ranges)
+        angle = 180
+        points = []
+        for range in ranges:
+            x = range * np.cos(angle)
+            y = range * np.sin(angle)
+            angle += angle_step
+            points.append([x,y])
+
+        points_np = np.array(points)
+        #print(points_np)
+        plt.figure()
+        colors = np.linspace(0, 1, 36)
+        sizes = np.linspace(1, 20, 36)
+        plt.scatter(points_np[:,0], points_np[:,1], c=colors, s=sizes)
+        plt.show()
+    
+        return points
 
 
 @hydra.main(config_name="config", config_path="../cfg")
@@ -104,7 +221,7 @@ def parse_hydra_configs(cfg: DictConfig):
     if cfg_dict["test"]:
         cfg_dict["task"]["env"]["numEnvs"] = 1
         cfg_dict["train"]["params"]["config"]["minibatch_size"] = 128
-        cfg_dict["sim"]["domain_randomization"]["randomize"] = False
+        cfg_dict["task"]["domain_randomization"]["randomize"] = False
 
     task = initialize_task(cfg_dict, env)
 
@@ -112,31 +229,11 @@ def parse_hydra_configs(cfg: DictConfig):
     from omni.isaac.core.utils.torch.maths import set_seed
     cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
 
-    if cfg.wandb_activate:
-        # Make sure to install WandB if you actually use this.
-        import wandb
-
-        run_name = f"{cfg.wandb_name}_{time_str}"
-
-        wandb.init(
-            project=cfg.wandb_project,
-            group=cfg.wandb_group,
-            entity=cfg.wandb_entity,
-            config=cfg_dict,
-            sync_tensorboard=True,
-            id=run_name,
-            resume="allow",
-            monitor_gym=True,
-        )
-
 
     rlg_trainer = RLGTrainer(cfg, cfg_dict)
     rlg_trainer.launch_rlg_hydra(env)
     rlg_trainer.run()
     env.close()
-
-    if cfg.wandb_activate:
-        wandb.finish()
 
 
 if __name__ == '__main__':
