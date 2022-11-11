@@ -42,8 +42,8 @@ params:
     env_name: rlgpu
     ppo: True
     mixed_precision: False
-    normalize_input: False
-    normalize_value: False
+    normalize_input: True
+    normalize_value: True
     num_actors: ${....task.env.numEnvs}
     reward_shaper:
       scale_value: 0.1
@@ -62,7 +62,7 @@ params:
     truncate_grads: True
     e_clip: 0.2
     horizon_length: 128
-    minibatch_size: 128
+    minibatch_size: 4096
     mini_epochs: 4
     critic_coef: 2
     clip_value: True
