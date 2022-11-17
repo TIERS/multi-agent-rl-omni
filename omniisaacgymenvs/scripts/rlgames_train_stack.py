@@ -32,7 +32,8 @@ from omniisaacgymenvs.utils.hydra_cfg.reformat import omegaconf_to_dict, print_d
 from omniisaacgymenvs.utils.rlgames.rlgames_utils import RLGPUAlgoObserver, RLGPUEnv
 from omniisaacgymenvs.utils.task_util import initialize_task
 from omniisaacgymenvs.utils.config_utils.path_utils import retrieve_checkpoint_path
-from omniisaacgymenvs.envs.vec_env_rlgames import VecEnvRLGames
+from omniisaacgymenvs.envs.vec_env_rlgames_stack import VecEnvRLGamesStack
+
 
 import hydra
 from omegaconf import DictConfig
@@ -90,7 +91,7 @@ def parse_hydra_configs(cfg: DictConfig):
     time_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     headless = cfg.headless
-    env = VecEnvRLGames(headless=headless, sim_device=cfg.device_id)
+    env = VecEnvRLGamesStack(headless=headless, sim_device=cfg.device_id)
 
     # ensure checkpoints can be specified as relative paths
     if cfg.checkpoint:
@@ -102,7 +103,7 @@ def parse_hydra_configs(cfg: DictConfig):
     print_dict(cfg_dict)
 
     if cfg_dict["test"]:
-        cfg_dict["task"]["env"]["numEnvs"] = 1
+        cfg_dict["task"]["env"]["numEnvs"] = 2
         cfg_dict["train"]["params"]["config"]["minibatch_size"] = 128
         cfg_dict["task"]["domain_randomization"]["randomize"] = False
 

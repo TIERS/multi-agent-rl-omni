@@ -1,5 +1,43 @@
 # Omniverse Isaac Gym Reinforcement Learning Environments for Isaac Sim
 
+### Jetbot specific
+
+Train with just MLP and single "frame" of lidar ranges
+
+run (optionally set wandb_activate=True to visualize training)
+```bash
+pythonsh scripts/rlgames_train.py task=Jetbot
+```
+
+Train with CNN and 4 lidar ranges stacked
+
+```bash
+pythonsh scripts/rlgames_train_stack.py task=Jetbot_CNN
+```
+
+Test with same scripts but set test=True and checkpoint=PATH_TO_PTH_FILE
+
+example
+```bash
+pythonsh scripts/rlgames_train_stack.py task=Jetbot_CNN test=True checkpoint=omniisaacgymenvs/runs/Jetbot_CNN/nn/Jetbot_CNN.pth
+```
+
+Export .onnx file for inference in Gazebo or real robot
+
+MLP
+```bash
+pythonsh scripts/rlgames_onnx_normalized.py task=Jetbot test=True checkpoint=omniisaacgymenvs/runs/Jetbot/nn/Jetbot.pth
+```
+
+CNN
+```bash
+pythonsh scripts/rlgames_onnx_normalized_stack.py task=Jetbot_CNN test=True checkpoint=omniisaacgymenvs/runs/Jetbot_CNN/nn/Jetbot_CNN.pth
+```
+
+Configs are in omniisaacgymenvs/cfg/task and omniisaacgymenvs/cfg/train folders. You can change the numEnvs in Jetbot.yaml and Jetbot_CNN.yaml to have different amount of cloned environments (default 64). If numEnvs is changed, also minibatch_size in train config needs to be changed to smaller size. minibatch_size needs to be smaller than numEnvs * horizon_length.
+
+To use wandb, update "wandb_entity: 'your_username'" in config.yaml
+
 ### About this repository
 
 This repository contains Reinforcement Learning examples that can be run with the latest release of [Isaac Sim](https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/overview.html). RL examples are trained using PPO from [rl_games](https://github.com/Denys88/rl_games) library and examples are built on top of Isaac Sim's `omni.isaac.core` and `omni.isaac.gym` frameworks.

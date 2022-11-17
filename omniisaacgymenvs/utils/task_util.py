@@ -58,7 +58,8 @@ def initialize_task(config, env, init_sim=True):
         "ShadowHand": ShadowHandTask,
         "ShadowHandOpenAI_FF": ShadowHandTask,
         "ShadowHandOpenAI_LSTM": ShadowHandTask,
-        "Jetbot": JetbotTask
+        "Jetbot": JetbotTask,
+        "Jetbot_CNN": JetbotTask
     }
 
     from .config_utils.sim_config import SimConfig
