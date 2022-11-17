@@ -69,7 +69,7 @@ class JetbotTask(RLTask):
         
         self.collision_range = 0.22 # 0.11 or 0.20
 
-        self.ranges_count = 72
+        self.ranges_count = 360
         self._num_observations = self.ranges_count + 2 # +2 for angle and distance (polar coords)
         self._num_actions = 1
 
@@ -114,7 +114,7 @@ class JetbotTask(RLTask):
             draw_lines=False,
             horizontal_fov=360.0,
             vertical_fov=30.0,
-            horizontal_resolution=5.0,
+            horizontal_resolution=360/self.ranges_count, # 5
             vertical_resolution=4.0,
             rotation_rate=0.0,
             high_lod=False,
