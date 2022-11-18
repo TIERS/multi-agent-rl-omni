@@ -44,6 +44,7 @@ from pxr import Gf
 import numpy as np
 import torch
 import math
+from gym import spaces
 
 
 class JetbotTask(RLTask):
@@ -71,12 +72,13 @@ class JetbotTask(RLTask):
 
         self.ranges_count = 360
         self._num_observations = self.ranges_count + 2 # +2 for angle and distance (polar coords)
-        self._num_actions = 1
+        self._num_actions = 2
 
         self._diff_controller = DifferentialController(name="simple_control",wheel_radius=0.03, wheel_base=0.1125)
 
-
         RLTask.__init__(self, name, env)
+
+        self.action_space = spaces.Box(low=np.array([0.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float32)
 
         # init tensors that need to be set to correct device
         self.prev_goal_distance = torch.zeros(self._num_envs).to(self._device)
@@ -157,6 +159,12 @@ class JetbotTask(RLTask):
 
         self.goal_distances = torch.linalg.norm(self.positions - self.target_positions, dim=1).to(self._device)
 
+        to_target = self.target_positions - self.positions
+        to_target[:, 2] = 0.0
+
+        self.prev_potentials[:] = self.potentials.clone()
+        self.potentials[:] = -torch.norm(to_target, p=2, dim=-1) / self.dt
+
         obs = torch.hstack((self.ranges, self.headings.unsqueeze(1), self.goal_distances.unsqueeze(1)))
         self.obs_buf[:] = obs
 
@@ -178,10 +186,10 @@ class JetbotTask(RLTask):
         indices = torch.arange(self._jetbots.count, dtype=torch.int32, device=self._device)
         # self._cartpoles.set_joint_efforts(forces, indices=indices)
         
-        controls = torch.zeros((self._num_envs,2))
+        controls = torch.zeros((self._num_envs, 2))
         #print(actions)
         for i in range(self._num_envs):
-            controls[i] = self._diff_controller.forward([0.2, 2*actions[i].item()])
+            controls[i] = self._diff_controller.forward([0.4*actions[i][0].item()+0.05, actions[i][1].item()])
 
         #self._jetbots.apply_action(ArticulationActions(joint_velocities=controls))
         #joint_velocities = torch.tensor([[1.0, 1.0], [1.0, 1.0], [1.0, 1.0], [1.0, 1.0]]) * 10
@@ -211,6 +219,11 @@ class JetbotTask(RLTask):
         
         self._targets.set_world_poses(target_pos, indices=env_ids)
 
+        to_target = target_pos - self.initial_root_pos[env_ids]
+        to_target[:, 2] = 0.0
+        self.prev_potentials[env_ids] = -torch.norm(to_target, p=2, dim=-1) / self.dt
+        self.potentials[env_ids] = self.prev_potentials[env_ids].clone()
+
         # bookkeeping
         self.reset_buf[env_ids] = 0
         self.progress_buf[env_ids] = 0
@@ -225,6 +238,10 @@ class JetbotTask(RLTask):
         self.initial_root_pos, self.initial_root_rot = self._jetbots.get_world_poses()
         self.initial_target_pos, _ = self._targets.get_world_poses()
         #self.target_pos, _ = self._targets.get_world_poses()
+
+        self.dt = 1.0 / 60.0
+        self.potentials = torch.tensor([-1000.0 / self.dt], dtype=torch.float32, device=self._device).repeat(self.num_envs)
+        self.prev_potentials = self.potentials.clone()
 
         # randomize all envs
         indices = torch.arange(self._jetbots.count, dtype=torch.int64, device=self._device)
@@ -250,11 +267,25 @@ class JetbotTask(RLTask):
 
         self.prev_heading = self.headings
 
-        rewards -= self.collisions * 20
-        rewards += closer_to_goal * 0.005
+        progress_reward = self.potentials - self.prev_potentials
+        #print("potential", self.potentials)
+        #print("prev_potential", self.prev_potentials)
+        #print("progress", progress_reward)
+        # print("closer", float(closer_to_goal))
+        # print("heading", float(heading_bonus))
+
+        episode_end = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, 0.0)
+        #print(episode_end)
+
+        rewards -= 20 * self.collisions
+        rewards -= 10 * episode_end
+        #rewards += closer_to_goal * 0.005
         #rewards += closer_to_heading * 0.01
-        rewards += heading_bonus * 0.005
-        rewards += self.goal_reached * 20
+        #rewards += heading_bonus * 0.005
+        rewards += 0.1 * progress_reward
+        rewards += 20 * self.goal_reached
+
+        #print(progress_reward)
 
         #print("collisions", self.collisions[0].item(), "closer to goal", closer_to_goal[0].item(), "heading bonus", heading_bonus[0].item(), "heading", self.headings[0].item())
 
