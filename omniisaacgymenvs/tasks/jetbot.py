@@ -46,6 +46,13 @@ import torch
 import math
 from gym import spaces
 
+"""
+TODO:
+- add variables like episode length and collision range to config
+- use @torch.jit.script to speed up functions that get called every step
+- clean up code
+"""
+
 
 class JetbotTask(RLTask):
     def __init__(
@@ -130,7 +137,7 @@ class JetbotTask(RLTask):
             prim_path=self.default_zero_env_path + "/target_cube",
         )
 
-
+    # part of this could use jit
     def get_observations(self) -> dict:
         """Return lidar ranges and polar coordinates as observations to RL agent."""
         self.ranges = torch.zeros((self._num_envs, self.ranges_count)).to(self._device)
@@ -250,6 +257,7 @@ class JetbotTask(RLTask):
         if self._dr_randomizer.randomize:
             self._dr_randomizer.set_up_domain_randomization(self)
 
+    # could use jit
     def calculate_metrics(self) -> None:
         """Calculate rewards for the RL agent."""
         rewards = torch.zeros_like(self.rew_buf)
@@ -291,6 +299,7 @@ class JetbotTask(RLTask):
 
         self.rew_buf[:] = rewards
 
+    # could use jit
     def is_done(self) -> None:
         """Flags the environnments in which the episode should end."""
         #self.reset_buf[:] = torch.zeros(self._num_envs)
