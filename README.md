@@ -1,6 +1,24 @@
-# Omniverse Isaac Gym Reinforcement Learning Environments for Isaac Sim
 
-### Jetbot specific
+
+# Multi-agent RL
+
+Mobile manipulation, Isaac Sim
+
+## Server setup and remote access
+
+TODO
+
+## Environment setup
+
+Follow the installation section below. The "pythonsh" part is the same as "PYTHON_PATH". For example in .bashrc add
+
+```bash
+alias pythonsh=~/.local/share/ov/pkg/isaac_sim-2022.1.1/python.sh
+```
+
+## Jetbot specific
+
+cd to omniisaacgymenvs
 
 Train with just MLP and single "frame" of lidar ranges
 
@@ -38,6 +56,9 @@ Configs are in omniisaacgymenvs/cfg/task and omniisaacgymenvs/cfg/train folders.
 
 To use wandb, update "wandb_entity: 'your_username'" in config.yaml
 
+
+# Omniverse Isaac Gym Reinforcement Learning Environments for Isaac Sim
+
 ### About this repository
 
 This repository contains Reinforcement Learning examples that can be run with the latest release of [Isaac Sim](https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/overview.html). RL examples are trained using PPO from [rl_games](https://github.com/Denys88/rl_games) library and examples are built on top of Isaac Sim's `omni.isaac.core` and `omni.isaac.gym` frameworks.
@@ -65,7 +86,7 @@ Once installed, this repository can be used as a python module, `omniisaacgymenv
 To install `omniisaacgymenvs`, first clone this repository:
 
 ```bash
-git clone https://github.com/NVIDIA-Omniverse/OmniIsaacGymEnvs.git
+git clone https://github.com/TIERS/multi-agent-rl-omni
 ```
 
 Once cloned, locate the [python executable in Isaac Sim](https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/install_python.html). By default, this should be `python.sh`. We will refer to this path as `PYTHON_PATH`.
@@ -77,7 +98,7 @@ For Linux: alias PYTHON_PATH=~/.local/share/ov/pkg/isaac_sim-*/python.sh
 For Windows: doskey PYTHON_PATH=C:\Users\user\AppData\Local\ov\pkg\isaac_sim-*\python.bat $*
 ```
 
-Install `omniisaacgymenvs` as a python module for `PYTHON_PATH`:
+Install `omniisaacgymenvs` as a python module for `PYTHON_PATH`. Change directory to root of this repo and run:
 
 ```bash
 PYTHON_PATH -m pip install -e .
