@@ -6,7 +6,7 @@ Mobile manipulation, Isaac Sim
 
 ## Server setup and remote access
 
-TODO
+Use zerotier or dwservice
 
 ## Environment setup
 
@@ -15,6 +15,10 @@ Follow the installation section below. The "pythonsh" part is the same as "PYTHO
 ```bash
 alias pythonsh=~/.local/share/ov/pkg/isaac_sim-2022.1.1/python.sh
 ```
+
+## SKRL - RL library that has support for NVIDIA Omniverse Isaac Gym environments
+
+https://skrl.readthedocs.io/en/latest/
 
 ## Jetbot specific
 
