@@ -104,7 +104,7 @@ def parse_hydra_configs(cfg: DictConfig):
     if cfg_dict["test"]:
         cfg_dict["task"]["env"]["numEnvs"] = 1
         cfg_dict["train"]["params"]["config"]["minibatch_size"] = 128
-        cfg_dict["task"]["domain_randomization"]["randomize"] = False
+        # cfg_dict["task"]["domain_randomization"]["randomize"] = False
 
     task = initialize_task(cfg_dict, env)
 
