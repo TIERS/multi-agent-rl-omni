@@ -41,6 +41,7 @@ def initialize_task(config, env, init_sim=True):
     from omniisaacgymenvs.tasks.shadow_hand import ShadowHandTask
     from omniisaacgymenvs.tasks.crazyflie import CrazyflieTask
     from omniisaacgymenvs.tasks.jetbot import JetbotTask
+    from omniisaacgymenvs.tasks.franka_example import FrankaExampleTask
 
     # Mappings from strings to environments
     task_map = {
@@ -59,7 +60,8 @@ def initialize_task(config, env, init_sim=True):
         "ShadowHandOpenAI_FF": ShadowHandTask,
         "ShadowHandOpenAI_LSTM": ShadowHandTask,
         "Jetbot": JetbotTask,
-        "Jetbot_CNN": JetbotTask
+        "Jetbot_CNN": JetbotTask,
+        "FrankaExample": FrankaExampleTask,
     }
 
     from .config_utils.sim_config import SimConfig

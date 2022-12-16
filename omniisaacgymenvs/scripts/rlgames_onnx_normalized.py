@@ -117,18 +117,18 @@ class RLGTrainer():
             flattened_outputs = traced(*adapter.flattened_inputs)
             print(flattened_outputs)
         
-        torch.onnx.export(traced, *adapter.flattened_inputs, "jetbot.onnx", verbose=True, input_names=['obs'], output_names=['mu', 'log_std', 'value'])
+        torch.onnx.export(traced, *adapter.flattened_inputs, "franka.onnx", verbose=True, input_names=['obs'], output_names=['mu', 'log_std', 'value'])
 
-        onnx_model = onnx.load("jetbot.onnx")
+        onnx_model = onnx.load("franka.onnx")
 
         # Check that the model is well formed
         onnx.checker.check_model(onnx_model)
 
-        ort_model = ort.InferenceSession("jetbot.onnx")
+        ort_model = ort.InferenceSession("franka.onnx")
 
         outputs = ort_model.run(
             None,
-            {"obs": np.zeros((1, 74)).astype(np.float32)},
+            {"obs": np.zeros((1,)+agent.obs_shape).astype(np.float32)},
         )
         print(outputs)
         #action = np.argmax(outputs[0])
@@ -154,11 +154,13 @@ class RLGTrainer():
         num_steps = 0
         while not is_done:
             outputs = ort_model.run(None, {"obs": obs["obs"].cpu().numpy()},)
-            mu = outputs[0].squeeze(1)
-            sigma = np.exp(outputs[1].squeeze(1))
+            #print("outputs[0]", outputs[0])
+            mu = outputs[0].squeeze(0)
+            sigma = np.exp(outputs[1].squeeze(0))
             action = np.random.normal(mu, sigma)
             action = torch.tensor(action)
-            print(action )
+            print(mu, sigma, action)
+            #print(action)
             #print(obs)
             #self.polar_to_cartesian_coordinate(obs["obs"].cpu().numpy().squeeze()[:36], -np.pi, 0)
             #input()
@@ -220,8 +222,8 @@ def parse_hydra_configs(cfg: DictConfig):
 
     if cfg_dict["test"]:
         cfg_dict["task"]["env"]["numEnvs"] = 1
-        cfg_dict["train"]["params"]["config"]["minibatch_size"] = 128
-        cfg_dict["task"]["domain_randomization"]["randomize"] = False
+        cfg_dict["train"]["params"]["config"]["minibatch_size"] = cfg_dict["train"]["params"]["config"]["horizon_length"]
+        #cfg_dict["task"]["domain_randomization"]["randomize"] = False
 
     task = initialize_task(cfg_dict, env)
 

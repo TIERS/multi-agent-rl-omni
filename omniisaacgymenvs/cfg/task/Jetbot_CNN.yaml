@@ -75,7 +75,7 @@ sim:
   # rest_offset: 0.001
 
 domain_randomization:
-  randomize: False
+  randomize: True
   #min_frequency: 720
   randomization_params:
     observations:

@@ -1,7 +1,5 @@
-# copied from cartpoleppo.yaml
 params:
   seed: ${...seed}
-
   algo:
     name: a2c_continuous
 
@@ -11,43 +9,22 @@ params:
   network:
     name: actor_critic
     separate: False
+
     space:
       continuous:
         mu_activation: None
         sigma_activation: None
-
         mu_init:
           name: default
         sigma_init:
           name: const_initializer
           val: 0
         fixed_sigma: True
-    
-    cnn:
-      #permute_input: False
-      type: conv1d
-      activation: relu
-      initializer:
-        name: default
-      #initializer:
-      #  name: glorot_normal_initializer
-      #  gain: 1.4142
-      regularizer:
-        name: None
-      convs:    
-        - filters: 32
-          kernel_size: 5
-          strides: 2
-          padding: 0
-        - filters: 32
-          kernel_size: 3
-          strides: 2
-          padding: 0
-    
     mlp:
-      units: [512]
-      activation: relu
-      
+      units: [256, 128, 64]
+      activation: elu
+      d2rl: False
+
       initializer:
         name: default
       regularizer:
@@ -57,36 +34,37 @@ params:
   load_path: ${...checkpoint} # path to the checkpoint to load
 
   config:
-    name: ${resolve_default:Jetbot_CNN,${....experiment}}
+    name: ${resolve_default:FrankaExample,${....experiment}}
     full_experiment_name: ${.name}
+    env_name: rlgpu
     device: ${....rl_device}
     device_name: ${....rl_device}
-    env_name: rlgpu
     ppo: True
     mixed_precision: False
     normalize_input: True
     normalize_value: True
     num_actors: ${....task.env.numEnvs}
     reward_shaper:
-      scale_value: 0.1
+      scale_value: 0.01
     normalize_advantage: True
     gamma: 0.99
     tau: 0.95
-    learning_rate: 3e-4
+    learning_rate: 5e-4
     lr_schedule: adaptive
     kl_threshold: 0.008
-    score_to_win: 20000
-    max_epochs: ${resolve_default:200,${....max_iterations}}
-    save_best_after: 50
-    save_frequency: 25
+    score_to_win: 100000000
+    max_epochs: ${resolve_default:1500,${....max_iterations}}
+    save_best_after: 200
+    save_frequency: 100
+    print_stats: True
     grad_norm: 1.0
-    entropy_coef: 0.005
+    entropy_coef: 0.0
     truncate_grads: True
     e_clip: 0.2
-    horizon_length: 128
-    minibatch_size: 4096
-    mini_epochs: 4
-    critic_coef: 2
+    horizon_length: 16
+    minibatch_size: 1024
+    mini_epochs: 8
+    critic_coef: 4
     clip_value: True
     seq_len: 4
     bounds_loss_coef: 0.0001
