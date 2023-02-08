@@ -42,6 +42,7 @@ def initialize_task(config, env, init_sim=True):
     from omniisaacgymenvs.tasks.crazyflie import CrazyflieTask
     from omniisaacgymenvs.tasks.jetbot import JetbotTask
     from omniisaacgymenvs.tasks.franka_example import FrankaExampleTask
+    from omniisaacgymenvs.tasks.mobile_franka import MobileFrankaTask
 
     # Mappings from strings to environments
     task_map = {
@@ -62,6 +63,7 @@ def initialize_task(config, env, init_sim=True):
         "Jetbot": JetbotTask,
         "Jetbot_CNN": JetbotTask,
         "FrankaExample": FrankaExampleTask,
+        "MobileFranka": MobileFrankaTask,
     }
 
     from .config_utils.sim_config import SimConfig
