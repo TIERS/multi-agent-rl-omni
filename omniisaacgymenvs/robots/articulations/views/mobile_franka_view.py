@@ -28,6 +28,7 @@ class MobileFrankaView(ArticulationView):
         super().initialize(physics_sim_view)
 
         self._gripper_indices = [self.get_dof_index("panda_finger_joint1"), self.get_dof_index("panda_finger_joint2")]
+        self._base_indices = [self.get_dof_index("dummy_base_prismatic_x_joint"), self.get_dof_index("dummy_base_prismatic_y_joint"), self.get_dof_index("dummy_base_revolute_z_joint")]
         
     @property
     def gripper_indices(self):

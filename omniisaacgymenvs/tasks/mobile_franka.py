@@ -79,10 +79,10 @@ class MobileFrankaTask(RLTask):
         
         super().set_up_scene(scene, replicate_physics=False)
 
-        self._frankas = MobileFrankaView(prim_paths_expr="/World/envs/.*/mobile_franka", name="franka_view")
+        self._mobilefrankas = MobileFrankaView(prim_paths_expr="/World/envs/.*/mobile_franka", name="franka_view")
         #self._cabinets = CabinetView(prim_paths_expr="/World/envs/.*/cabinet", name="cabinet_view")
 
-        scene.add(self._frankas)
+        scene.add(self._mobilefrankas)
         #scene.add(self._frankas._hands)
         #scene.add(self._frankas._lfingers)
         #scene.add(self._frankas._rfingers)
@@ -94,53 +94,7 @@ class MobileFrankaTask(RLTask):
 
     def get_franka(self):
         mobile_franka = MobileFranka(prim_path=self.default_zero_env_path + "/mobile_franka", name="mobile_franka")
-        self._sim_config.apply_articulation_settings("franka", get_prim_at_path(mobile_franka.prim_path), self._sim_config.parse_actor_config("franka"))
-
-    def get_cabinet(self):
-        cabinet = Cabinet(self.default_zero_env_path + "/cabinet", name="cabinet")
-        self._sim_config.apply_articulation_settings("cabinet", get_prim_at_path(cabinet.prim_path), self._sim_config.parse_actor_config("cabinet"))        
-
-    def get_props(self):
-        prop_cloner = Cloner()
-        drawer_pos = torch.tensor([0.0515, 0.0, 0.7172])
-        prop_color = torch.tensor([0.2, 0.4, 0.6])
-
-        props_per_row = int(math.ceil(math.sqrt(self.num_props)))
-        prop_size = 0.08
-        prop_spacing = 0.09
-        xmin = -0.5 * prop_spacing * (props_per_row - 1)
-        zmin = -0.5 * prop_spacing * (props_per_row - 1)
-        prop_count = 0
-
-        prop_pos = []
-        for j in range(props_per_row):
-            prop_up = zmin + j * prop_spacing
-            for k in range(props_per_row):
-                if prop_count >= self.num_props:
-                    break
-                propx = xmin + k * prop_spacing
-                prop_pos.append([propx, prop_up, 0.0])
-
-                prop_count += 1
-
-        prop = DynamicCuboid(
-            prim_path=self.default_zero_env_path + "/prop/prop_0",
-            name="prop",
-            color=prop_color,
-            size=prop_size,
-            density=100.0
-        )
-        
-        self._sim_config.apply_articulation_settings("prop", get_prim_at_path(prop.prim_path), self._sim_config.parse_actor_config("prop"))  
-
-        
-        prop_paths = [f"{self.default_zero_env_path}/prop/prop_{j}" for j in range(self.num_props)]
-
-        prop_cloner.clone(
-            source_prim_path=self.default_zero_env_path + "/prop/prop_0", 
-            prim_paths=prop_paths, 
-            positions=np.array(prop_pos)+np.array([0.25, 0.0, 1.0])   #+drawer_pos.numpy()
-        )
+        self._sim_config.apply_articulation_settings("franka", get_prim_at_path(mobile_franka.prim_path), self._sim_config.parse_actor_config("franka"))     
 
     def init_data(self) -> None:
         def get_env_local_pose(env_pos, xformable, device):
@@ -201,7 +155,7 @@ class MobileFrankaTask(RLTask):
     def get_observations(self) -> dict:
         #hand_pos, hand_rot = self._frankas._hands.get_world_poses(clone=False)
         #drawer_pos, drawer_rot = self._cabinets._drawers.get_world_poses(clone=False)
-        franka_dof_pos = self._frankas.get_joint_positions(clone=False)
+        franka_dof_pos = self._mobilefrankas.get_joint_positions(clone=False)
         #franka_dof_vel = self._frankas.get_joint_velocities(clone=False)
         #self.cabinet_dof_pos = self._cabinets.get_joint_positions(clone=False)
         #self.cabinet_dof_vel = self._cabinets.get_joint_velocities(clone=False)
@@ -258,7 +212,7 @@ class MobileFrankaTask(RLTask):
         #print("self.cabinet_dof_vel[:, 3].unsqueeze(-1)", self.cabinet_dof_vel[:, 3].unsqueeze(-1), self.cabinet_dof_vel[:, 3].unsqueeze(-1).shape)
         
         observations = {
-            self._frankas.name: {
+            self._mobilefrankas.name: {
                 "obs_buf": self.obs_buf
             }
         }
@@ -272,21 +226,21 @@ class MobileFrankaTask(RLTask):
         self.actions = actions.clone().to(self._device)
         targets = self.franka_dof_targets + self.franka_dof_speed_scales * self.dt * self.actions * self.action_scale
         self.franka_dof_targets[:] = torch.clamp(targets, self.franka_dof_lower_limits, self.franka_dof_upper_limits)
-        env_ids_int32 = torch.arange(self._frankas.count, dtype=torch.int32, device=self._device)
+        env_ids_int32 = torch.arange(self._mobilefrankas.count, dtype=torch.int32, device=self._device)
 
         # TODO REMOVE test them to constantly move forward
         self.actions[:, 0] = 1.0
 
         action_x = self.actions[:, 0]
-        action_y = torch.zeros(self._frankas.count, device=self._device)
+        action_y = torch.zeros(self._mobilefrankas.count, device=self._device)
         action_yaw = self.actions[:, 2]
 
         vel_targets = self._calculate_velocity_targets(action_x, action_y, action_yaw)
 
         self.franka_dof_targets[:, :3] = self.franka_dof_pos[:, :3]
         #print("self.franka_dof_targets", self.franka_dof_targets)
-        self._frankas.set_joint_position_targets(self.franka_dof_targets, indices=env_ids_int32)
-        self._frankas.set_joint_velocity_targets(vel_targets, joint_indices=torch.tensor([0,1,2]))
+        self._mobilefrankas.set_joint_position_targets(self.franka_dof_targets, indices=env_ids_int32)
+        self._mobilefrankas.set_joint_velocity_targets(vel_targets, joint_indices=torch.tensor([0,1,2]))
         #pass
 
         #print("self.obs_buf", self.obs_buf)
@@ -312,32 +266,33 @@ class MobileFrankaTask(RLTask):
             self.franka_dof_lower_limits,
             self.franka_dof_upper_limits,
         )
-        dof_pos = torch.zeros((num_indices, self._frankas.num_dof), device=self._device)
-        dof_vel = torch.zeros((num_indices, self._frankas.num_dof), device=self._device)
+        dof_pos = torch.zeros((num_indices, self._mobilefrankas.num_dof), device=self._device)
+        dof_vel = torch.zeros((num_indices, self._mobilefrankas.num_dof), device=self._device)
         dof_pos[:, :] = pos
         self.franka_dof_targets[env_ids, :] = pos
         self.franka_dof_pos[env_ids, :] = pos
 
-        self._frankas.set_joint_position_targets(self.franka_dof_targets[env_ids], indices=indices)
-        self._frankas.set_joint_positions(dof_pos, indices=indices)
-        self._frankas.set_joint_velocities(dof_vel, indices=indices)
+        self._mobilefrankas.set_joint_position_targets(self.franka_dof_targets[env_ids], indices=indices)
+        self._mobilefrankas.set_joint_positions(dof_pos, indices=indices)
+        self._mobilefrankas.set_joint_velocities(dof_vel, indices=indices)
 
         # bookkeeping
         self.reset_buf[env_ids] = 0
         self.progress_buf[env_ids] = 0
 
     def post_reset(self):
-
-        self.num_franka_dofs = self._frankas.num_dof
+        """setup initial values for dof related things. This is run only once when the environment is initialized."""
+        self.num_franka_dofs = self._mobilefrankas.num_dof
         self.franka_dof_pos = torch.zeros((self.num_envs, self.num_franka_dofs), device=self._device)
-        dof_limits = self._frankas.get_dof_limits()
+        dof_limits = self._mobilefrankas.get_dof_limits()
         self.franka_dof_lower_limits = dof_limits[0, :, 0].to(device=self._device)
         self.franka_dof_upper_limits = dof_limits[0, :, 1].to(device=self._device)
-        #print("lower", self.franka_dof_lower_limits)
-        #print("upper", self.franka_dof_upper_limits)
-        #input()
+
+        # control the joint speeds with these
         self.franka_dof_speed_scales = torch.ones_like(self.franka_dof_lower_limits)
-        self.franka_dof_speed_scales[self._frankas.gripper_indices] = 0.1
+        self.franka_dof_speed_scales[self._mobilefrankas.gripper_indices] = 0.1
+        self.franka_dof_speed_scales[self._mobilefrankas._base_indices] = 0.1
+        
         self.franka_dof_targets = torch.zeros(
             (self._num_envs, self.num_franka_dofs), dtype=torch.float, device=self._device
         )
