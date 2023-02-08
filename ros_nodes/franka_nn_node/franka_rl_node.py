@@ -7,7 +7,7 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 import onnxruntime as ort
 import numpy as np
-import moveit_commander
+#import moveit_commander
 import sys
 
 
@@ -62,6 +62,7 @@ class RLNode:
             # if self.joint_targets initializes to zeros it can make big movement which could break the real robot
             # so we check that joint_positions is not all zeros before initializing joint targets to it
             if self.joint_positions.sum() == 0:
+                print("here self.joint_positions.sum() == 0:")
                 return
             else:
                 self.joint_targets = self.joint_positions
@@ -105,14 +106,27 @@ class RLNode:
 
         # speed scales are changed from isaac sim to be 0.1 times the isaac sim values
         dof_speed_scales = np.array([0.1, 0.1 ,0.1 ,0.1, 0.1, 0.1, 0.1, 0.01, 0.01])
+        #dof_speed_scales = np.array([0.01, 0.01 ,0.01 ,0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
         #dof_speed_scales = np.array([1, 1 ,1 ,1, 1, 1, 1, 0.1, 0.1])
         targets = self.joint_targets + dof_speed_scales * self.dt * action * 7.5
         self.joint_targets = np.clip(targets, self.lower_limits, self.upper_limits)
 
         # set the goal for the arm joints (not gripper)
+        print("self.joint_positions", self.joint_positions)
         joint_goal = self.joint_targets[:7]
+        
+        # joint_goal = self.joint_positions[:7]
+        # joint_goal = [
+        #     0.00125, 
+        #     -0.78564, 
+        #     -0.00131, 
+        #     -2.35635,
+        #     -0.00366,
+        #     1.57296,
+        #     0.79711
+        # ]
 
-        print(self.joint_targets)
+        print(joint_goal)
 
         # slow python interface, maybe useful for some other tasks?
         # The go command can be called with joint values, poses, or without any
