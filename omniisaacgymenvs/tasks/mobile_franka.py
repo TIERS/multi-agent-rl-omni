@@ -77,7 +77,7 @@ class MobileFrankaTask(RLTask):
         self.get_franka()
         #self.get_cabinet()
         
-        super().set_up_scene(scene)
+        super().set_up_scene(scene, replicate_physics=False)
 
         self._frankas = MobileFrankaView(prim_paths_expr="/World/envs/.*/mobile_franka", name="franka_view")
         #self._cabinets = CabinetView(prim_paths_expr="/World/envs/.*/cabinet", name="cabinet_view")

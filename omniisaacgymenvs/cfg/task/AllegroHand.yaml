@@ -48,6 +48,7 @@ sim:
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
   use_flatcache: True
   enable_scene_query_support: False
+  disable_contact_processing: False
 
   # set to True if you use camera sensors in the environment
   enable_cameras: False
@@ -82,7 +83,6 @@ sim:
   allegro_hand:
     # -1 to use default values
     override_usd_defaults: False
-    fixed_base: False
     enable_self_collisions: True
     enable_gyroscopic_forces: False
     # also in stage params

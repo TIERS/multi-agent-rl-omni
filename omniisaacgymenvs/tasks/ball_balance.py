@@ -168,6 +168,9 @@ class BallBalanceTask(RLTask):
         return observations
 
     def pre_physics_step(self, actions) -> None:
+        if not self._env._world.is_playing():
+            return
+
         if not self.anchored:
             # Adding extra joints after ArticulationView is initialized
             self.set_up_table_anchors()
@@ -225,7 +228,6 @@ class BallBalanceTask(RLTask):
         ball_velocities[env_ids_64, 3:6] = 0
 
         # reset root state for bbots and balls in selected envs
-        self._balance_bots.set_world_poses(self.initial_bot_pos[env_ids_64], self.initial_bot_rot[env_ids_64].clone(), indices=env_ids_32)
         self._balls.set_world_poses(ball_pos[env_ids_64], ball_rot[env_ids_64], indices=env_ids_32)
         self._balls.set_velocities(ball_velocities[env_ids_64], indices=env_ids_32)
 

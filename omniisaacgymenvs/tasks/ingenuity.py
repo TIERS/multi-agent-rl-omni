@@ -132,6 +132,9 @@ class IngenuityTask(RLTask):
         return observations
 
     def pre_physics_step(self, actions) -> None:
+        if not self._env._world.is_playing():
+            return
+
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
             self.reset_idx(reset_env_ids)
@@ -165,17 +168,17 @@ class IngenuityTask(RLTask):
         # spin spinning rotors
         self.dof_vel[:, self.spinning_indices[0]] = 50
         self.dof_vel[:, self.spinning_indices[1]] = -50
-        self._copters.set_joint_velocities(self.dof_vel, indices=self.all_indices)
+        self._copters.set_joint_velocities(self.dof_vel)
 
         # apply actions
         for i in range(2):
             self._copters.physics_rotors[i].apply_forces(self.thrusts[:, i], indices=self.all_indices)
 
     def post_reset(self):
-        self.root_pos, self.root_rot = self._copters.get_world_poses(clone=False)
-        self.root_velocities = self._copters.get_velocities(clone=False)
-        self.dof_pos = self._copters.get_joint_positions(clone=False)
-        self.dof_vel = self._copters.get_joint_velocities(clone=False)
+        self.root_pos, self.root_rot = self._copters.get_world_poses()
+        self.root_velocities = self._copters.get_velocities()
+        self.dof_pos = self._copters.get_joint_positions()
+        self.dof_vel = self._copters.get_joint_velocities()
 
         self.initial_ball_pos, self.initial_ball_rot = self._balls.get_world_poses()
         self.initial_root_pos, self.initial_root_rot = self.root_pos.clone(), self.root_rot.clone()
@@ -198,7 +201,8 @@ class IngenuityTask(RLTask):
     def reset_idx(self, env_ids):
         num_resets = len(env_ids)
 
-        self.dof_pos[env_ids, :] = torch_rand_float(-0.2, 0.2, (num_resets, self._copters.num_dof), device=self._device)
+        self.dof_pos[env_ids, 1] = torch_rand_float(-0.2, 0.2, (num_resets, 1), device=self._device).squeeze()
+        self.dof_pos[env_ids, 3] = torch_rand_float(-0.2, 0.2, (num_resets, 1), device=self._device).squeeze()
         self.dof_vel[env_ids, :] = 0
 
         root_pos = self.initial_root_pos.clone()
