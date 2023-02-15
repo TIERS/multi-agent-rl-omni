@@ -20,6 +20,7 @@ from omni.isaac.core.prims import RigidPrim, RigidPrimView
 from omni.isaac.core.utils.prims import get_prim_at_path
 from omni.isaac.core.utils.stage import get_current_stage
 from omni.isaac.core.utils.torch.transformations import *
+from omni.isaac.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
 
 from omni.isaac.cloner import Cloner
 
@@ -63,10 +64,11 @@ class MobileFrankaTask(RLTask):
 
         self.distX_offset = 0.04
         #self.dt = 1/60.
+        # these values depend on the task and how we interface with the real robot
         control_frequency = 120.0 / self._task_cfg["env"]["controlFrequencyInv"] # 30
         self.dt = 1/control_frequency
 
-        self._num_observations = 18 #23
+        self._num_observations = 27 #23
         self._num_actions = 12
 
         RLTask.__init__(self, name, env)
@@ -83,9 +85,10 @@ class MobileFrankaTask(RLTask):
         #self._cabinets = CabinetView(prim_paths_expr="/World/envs/.*/cabinet", name="cabinet_view")
 
         scene.add(self._mobilefrankas)
-        #scene.add(self._frankas._hands)
-        #scene.add(self._frankas._lfingers)
-        #scene.add(self._frankas._rfingers)
+        scene.add(self._mobilefrankas._hands)
+        scene.add(self._mobilefrankas._lfingers)
+        scene.add(self._mobilefrankas._rfingers)
+        scene.add(self._mobilefrankas._base)
         #scene.add(self._cabinets)
         #scene.add(self._cabinets._drawers)
 
@@ -153,13 +156,27 @@ class MobileFrankaTask(RLTask):
         self.actions = torch.zeros((self._num_envs, self.num_actions), device=self._device)
 
     def get_observations(self) -> dict:
-        #hand_pos, hand_rot = self._frankas._hands.get_world_poses(clone=False)
+        #hand_pos, hand_rot = self._mobilefrankas._hands.get_world_poses(clone=False)
+        local_hand_pos, local_hand_rot = self._mobilefrankas._hands.get_local_poses()
         #drawer_pos, drawer_rot = self._cabinets._drawers.get_world_poses(clone=False)
         franka_dof_pos = self._mobilefrankas.get_joint_positions(clone=False)
-        #franka_dof_vel = self._frankas.get_joint_velocities(clone=False)
+        franka_dof_vel = self._mobilefrankas.get_joint_velocities(clone=False)
         #self.cabinet_dof_pos = self._cabinets.get_joint_positions(clone=False)
         #self.cabinet_dof_vel = self._cabinets.get_joint_velocities(clone=False)
         self.franka_dof_pos = franka_dof_pos
+
+        base_pos, base_rot = self._mobilefrankas._base.get_local_poses()
+        base_pos_xy = base_pos[:, :2]
+        base_rot_z = []
+        for rot in base_rot:
+            base_rot_z.append(quat_to_euler_angles(rot)[2])
+        base_rot_z = torch.tensor(base_rot_z).unsqueeze(1).to(self._device)
+
+        base_vel = self._mobilefrankas._base.get_velocities()
+        base_vel_xy = base_vel[:, :2]
+        base_angvel_z = base_vel[:, -1].unsqueeze(1)
+
+
 
         # self.franka_grasp_rot, self.franka_grasp_pos, self.drawer_grasp_rot, self.drawer_grasp_pos = self.compute_grasp_transforms(
         #     hand_rot,
@@ -174,13 +191,41 @@ class MobileFrankaTask(RLTask):
 
         #self.franka_lfinger_pos, self.franka_lfinger_rot = self._frankas._lfingers.get_world_poses(clone=False)
         #self.franka_rfinger_pos, self.franka_rfinger_rot = self._frankas._lfingers.get_world_poses(clone=False)
+        
+        # panda arm joint positions scaled
+        arm_dof_pos_scaled = (
+            2.0
+            * (franka_dof_pos[:, 3:] - self.franka_dof_lower_limits[3:])
+            / (self.franka_dof_upper_limits[3:] - self.franka_dof_lower_limits[3:])
+            - 1.0
+        )
 
-        # dof_pos_scaled = (
-        #     2.0
-        #     * (franka_dof_pos - self.franka_dof_lower_limits)
-        #     / (self.franka_dof_upper_limits - self.franka_dof_lower_limits)
-        #     - 1.0
-        # )
+        #print("franka_dof_pos", franka_dof_pos)
+        #print("dof_pos_scaled[0]", dof_pos_scaled[0].cpu().numpy())
+        #print("self.franka_dof_upper_limits", self.franka_dof_upper_limits)
+        #print("self.franka_dof_lower_limits", self.franka_dof_lower_limits)
+        #print(self.dof_vel_scale)
+        self.obs_buf = torch.hstack((
+            base_pos_xy, 
+            base_rot_z, 
+            arm_dof_pos_scaled,
+            base_vel_xy, 
+            base_angvel_z, 
+            franka_dof_vel[:, 3:] * self.dof_vel_scale,
+            local_hand_pos,
+            # hand pos target
+        )).to(dtype=torch.float32)
+        #input()
+
+        #print(obs)
+        #print(obs.shape)
+        #input()
+
+        #print("rotation", rot)
+        #print("angular vel", franka_dof_vel[0][2])
+
+        #print(dof_pos_scaled[0], dof_pos_scaled.shape)
+
 
         # prop_pos = self._props.get_world_poses(clone=False)[0]
         # #print("prop_pos", prop_pos)
@@ -229,7 +274,8 @@ class MobileFrankaTask(RLTask):
         env_ids_int32 = torch.arange(self._mobilefrankas.count, dtype=torch.int32, device=self._device)
 
         # TODO REMOVE test them to constantly move forward
-        self.actions[:, 0] = 1.0
+        self.actions[:, 0] = 1.0 # linear x
+        self.actions[:, 2] = -1.0 # angular z
 
         action_x = self.actions[:, 0]
         action_y = torch.zeros(self._mobilefrankas.count, device=self._device)
@@ -237,11 +283,11 @@ class MobileFrankaTask(RLTask):
 
         vel_targets = self._calculate_velocity_targets(action_x, action_y, action_yaw)
 
+        # set the position targets for base joints to the current position
         self.franka_dof_targets[:, :3] = self.franka_dof_pos[:, :3]
         #print("self.franka_dof_targets", self.franka_dof_targets)
         self._mobilefrankas.set_joint_position_targets(self.franka_dof_targets, indices=env_ids_int32)
         self._mobilefrankas.set_joint_velocity_targets(vel_targets, joint_indices=torch.tensor([0,1,2]))
-        #pass
 
         #print("self.obs_buf", self.obs_buf)
         #print("actions", actions)
@@ -326,8 +372,8 @@ class MobileFrankaTask(RLTask):
     def is_done(self) -> None:
         # reset if drawer is open or max length reached
         #self.reset_buf = torch.where(self.cabinet_dof_pos[:, 3] > 0.39, torch.ones_like(self.reset_buf), self.reset_buf)
-        #self.reset_buf = torch.where(self.progress_buf >= self._max_episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
-        pass
+        #print(self.progress_buf)
+        self.reset_buf = torch.where(self.progress_buf >= self._max_episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
 
     def compute_grasp_transforms(
         self,

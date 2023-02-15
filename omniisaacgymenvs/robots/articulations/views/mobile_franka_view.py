@@ -20,6 +20,7 @@ class MobileFrankaView(ArticulationView):
             reset_xform_properties=False
         )
 
+        self._base = RigidPrimView(prim_paths_expr="/World/envs/.*/mobile_franka/base_link", name="base_view", reset_xform_properties=False)
         self._hands = RigidPrimView(prim_paths_expr="/World/envs/.*/mobile_franka/panda_link7", name="hands_view", reset_xform_properties=False)
         self._lfingers = RigidPrimView(prim_paths_expr="/World/envs/.*/mobile_franka/panda_leftfinger", name="lfingers_view", reset_xform_properties=False)
         self._rfingers = RigidPrimView(prim_paths_expr="/World/envs/.*/mobile_franka/panda_rightfinger",  name="rfingers_view", reset_xform_properties=False)

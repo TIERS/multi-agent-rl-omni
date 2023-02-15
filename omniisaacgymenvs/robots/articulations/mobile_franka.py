@@ -34,7 +34,7 @@ class MobileFranka(Robot):
         self._usd_path = usd_path
         self._name = name
 
-        self._position = torch.tensor([1.0, 0.0, 0.0]) if translation is None else translation
+        self._position = torch.tensor([0.0, 0.0, 0.0]) if translation is None else translation
         self._orientation = torch.tensor([0.0, 0.0, 0.0, 1.0]) if orientation is None else orientation
 
         if self._usd_path is None:
