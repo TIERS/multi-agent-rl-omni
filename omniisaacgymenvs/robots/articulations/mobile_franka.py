@@ -55,6 +55,7 @@ class MobileFranka(Robot):
             articulation_controller=None,
         )
 
+        # arm
         dof_paths = [
             "panda_link0/panda_joint1",
             "panda_link1/panda_joint2",
@@ -86,3 +87,28 @@ class MobileFranka(Robot):
             )
 
             PhysxSchema.PhysxJointAPI(get_prim_at_path(f"{self.prim_path}/{dof}")).CreateMaxJointVelocityAttr().Set(max_velocity[i])
+        
+        # base
+        dof_paths = [
+            "world/dummy_base_prismatic_x_joint",
+            "dummy_base_x/dummy_base_prismatic_y_joint",
+            "dummy_base_y/dummy_base_revolute_z_joint"
+        ]
+
+        drive_type = ["linear"] * 2 + ["angular"]
+        default_dof_pos = [0.0] * 3
+        stiffness = [0.0] * 3
+        damping = [1000000.0] * 3
+        max_force = [4800.0] * 3
+
+        for i, dof in enumerate(dof_paths):
+            set_drive(
+                prim_path=f"{self.prim_path}/{dof}",
+                drive_type=drive_type[i],
+                target_type="velocity",
+                target_value=default_dof_pos[i],
+                stiffness=stiffness[i],
+                damping=damping[i],
+                max_force=max_force[i]
+            )
+        
