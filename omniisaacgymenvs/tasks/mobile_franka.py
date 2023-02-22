@@ -15,12 +15,13 @@ from omniisaacgymenvs.robots.articulations.views.franka_view import FrankaView
 from omniisaacgymenvs.robots.articulations.views.cabinet_view import CabinetView
 from omniisaacgymenvs.robots.articulations.views.mobile_franka_view import MobileFrankaView
 
-from omni.isaac.core.objects import DynamicCuboid, FixedCuboid
+from omni.isaac.core.objects import DynamicCuboid, FixedCuboid, VisualCuboid
 from omni.isaac.core.prims import RigidPrim, RigidPrimView
 from omni.isaac.core.utils.prims import get_prim_at_path
 from omni.isaac.core.utils.stage import get_current_stage
 from omni.isaac.core.utils.torch.transformations import *
-from omni.isaac.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
+#from omni.isaac.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
+from omni.isaac.core.utils.torch.rotations import get_euler_xyz
 
 from omni.isaac.cloner import Cloner
 
@@ -89,6 +90,15 @@ class MobileFrankaTask(RLTask):
         scene.add(self._mobilefrankas._lfingers)
         scene.add(self._mobilefrankas._rfingers)
         scene.add(self._mobilefrankas._base)
+        target_cube = VisualCuboid(
+            prim_path=self.default_zero_env_path + "/target_cube",
+            #position=[3.0, 0.0, 0.5],
+            translation=[3.0, 1.0, 0.5],
+            scale=np.array([0.1, 0.1, 0.1]),
+            color=np.array([1, 0, 0]),
+        )
+        
+        scene.add(target_cube)
         #scene.add(self._cabinets)
         #scene.add(self._cabinets._drawers)
 
@@ -158,41 +168,51 @@ class MobileFrankaTask(RLTask):
         self.actions = torch.zeros((self._num_envs, self.num_actions), device=self._device)
 
     def get_observations(self) -> dict:
-        #hand_pos, hand_rot = self._mobilefrankas._hands.get_world_poses(clone=False)
-        local_hand_pos, local_hand_rot = self._mobilefrankas._hands.get_local_poses()
-        #drawer_pos, drawer_rot = self._cabinets._drawers.get_world_poses(clone=False)
+        hand_pos, hand_rot = self._mobilefrankas._hands.get_world_poses(clone=False)
+        hand_pos = hand_pos - self._env_pos
+        # #drawer_pos, drawer_rot = self._cabinets._drawers.get_world_poses(clone=False)
         franka_dof_pos = self._mobilefrankas.get_joint_positions(clone=False)
         franka_dof_vel = self._mobilefrankas.get_joint_velocities(clone=False)
-        #self.cabinet_dof_pos = self._cabinets.get_joint_positions(clone=False)
-        #self.cabinet_dof_vel = self._cabinets.get_joint_velocities(clone=False)
+        # #self.cabinet_dof_pos = self._cabinets.get_joint_positions(clone=False)
+        # #self.cabinet_dof_vel = self._cabinets.get_joint_velocities(clone=False)
         self.franka_dof_pos = franka_dof_pos
 
-        base_pos, base_rot = self._mobilefrankas._base.get_local_poses()
+        base_pos, base_rot = self._mobilefrankas._base.get_world_poses(clone=False)
+        base_pos = base_pos - self._env_pos 
         base_pos_xy = base_pos[:, :2]
-        base_rot_z = []
-        for rot in base_rot:
-            base_rot_z.append(quat_to_euler_angles(rot)[2])
-        base_rot_z = torch.tensor(base_rot_z).unsqueeze(1).to(self._device)
 
-        base_vel = self._mobilefrankas._base.get_velocities()
+        # yaw is in range 0-2pi do I want it to be -pi to pi
+        roll, pitch, base_yaw = get_euler_xyz(base_rot)
+        base_yaw = base_yaw.unsqueeze(1)
+        # for rot in base_rot:
+        #     base_rot_z.append(quat_to_euler_angles(rot)[2])
+        # base_rot_z = torch.tensor(base_rot_z).unsqueeze(1).to(self._device)
+        
+        base_vel = self._mobilefrankas._base.get_velocities(clone=False)
         base_vel_xy = base_vel[:, :2]
         base_angvel_z = base_vel[:, -1].unsqueeze(1)
 
+        # print("base_pos_xy", base_pos_xy)
+        # print("hand_pos", hand_pos)
+        # print("base_vel_xy", base_vel_xy)
+        # print("self._env_pos", self._env_pos)
+        # input()
 
 
-        # self.franka_grasp_rot, self.franka_grasp_pos, self.drawer_grasp_rot, self.drawer_grasp_pos = self.compute_grasp_transforms(
-        #     hand_rot,
-        #     hand_pos,
-        #     self.franka_local_grasp_rot,
-        #     self.franka_local_grasp_pos,
-        #     drawer_rot,
-        #     drawer_pos,
-        #     self.drawer_local_grasp_rot,
-        #     self.drawer_local_grasp_pos,
-        # )
+        # # self.franka_grasp_rot, self.franka_grasp_pos, self.drawer_grasp_rot, self.drawer_grasp_pos = self.compute_grasp_transforms(
+        # #     hand_rot,
+        # #     hand_pos,
+        # #     self.franka_local_grasp_rot,
+        # #     self.franka_local_grasp_pos,
+        # #     drawer_rot,
+        # #     drawer_pos,
+        # #     self.drawer_local_grasp_rot,
+        # #     self.drawer_local_grasp_pos,
+        # # )
 
-        #self.franka_lfinger_pos, self.franka_lfinger_rot = self._frankas._lfingers.get_world_poses(clone=False)
-        #self.franka_rfinger_pos, self.franka_rfinger_rot = self._frankas._lfingers.get_world_poses(clone=False)
+        self.franka_lfinger_pos, self.franka_lfinger_rot = self._mobilefrankas._lfingers.get_world_poses(clone=False)
+        self.franka_lfinger_pos = self.franka_lfinger_pos - self._env_pos
+        # #self.franka_rfinger_pos, self.franka_rfinger_rot = self._frankas._lfingers.get_world_poses(clone=False)
         
         # panda arm joint positions scaled
         arm_dof_pos_scaled = (
@@ -202,22 +222,22 @@ class MobileFrankaTask(RLTask):
             - 1.0
         )
 
-        #print("franka_dof_pos", franka_dof_pos)
-        #print("dof_pos_scaled[0]", dof_pos_scaled[0].cpu().numpy())
-        #print("self.franka_dof_upper_limits", self.franka_dof_upper_limits)
-        #print("self.franka_dof_lower_limits", self.franka_dof_lower_limits)
-        #print(self.dof_vel_scale)
+        # #print("franka_dof_pos", franka_dof_pos)
+        # #print("dof_pos_scaled[0]", dof_pos_scaled[0].cpu().numpy())
+        # #print("self.franka_dof_upper_limits", self.franka_dof_upper_limits)
+        # #print("self.franka_dof_lower_limits", self.franka_dof_lower_limits)
+        # #print(self.dof_vel_scale)
 
-        self.to_target = self.target_positions - local_hand_pos
+        self.to_target = self.target_positions - self.franka_lfinger_pos
 
         self.obs_buf = torch.hstack((
             base_pos_xy, 
-            base_rot_z, 
+            base_yaw, 
             arm_dof_pos_scaled,
             base_vel_xy, 
             base_angvel_z, 
             franka_dof_vel[:, 3:] * self.dof_vel_scale,
-            local_hand_pos,
+            self.franka_lfinger_pos,
             self.target_positions
         )).to(dtype=torch.float32)
         #input()
@@ -279,12 +299,13 @@ class MobileFrankaTask(RLTask):
         env_ids_int32 = torch.arange(self._mobilefrankas.count, dtype=torch.int32, device=self._device)
 
         # TODO REMOVE test them to constantly move forward
-        self.actions[:, 0] = 2.0 # linear x
-        self.actions[:, 2] = 1.0 # angular z
+        #self.actions[:, 0] = 0.5 # linear x
+        #self.actions[:, 2] = 0.5 # angular z
 
-        action_x = self.actions[:, 0]
+        # TODO make the scaling values part of configs
+        action_x = self.actions[:, 0] * 1.0
         action_y = torch.zeros(self._mobilefrankas.count, device=self._device)
-        action_yaw = self.actions[:, 2]
+        action_yaw = self.actions[:, 2] * 0.75
 
         vel_targets = self._calculate_velocity_targets(action_x, action_y, action_yaw)
 
@@ -370,15 +391,28 @@ class MobileFrankaTask(RLTask):
 
         # regularization on the actions (summed for each environment)
         # TODO: do I need to penalize only arm joints or base also?
-        action_penalty = torch.sum(self.actions ** 2, dim=-1)
+        action_penalty = torch.sum(torch.square(self.actions[:, 2:]), dim=-1)
 
-        distance_to_target = torch.norm(self.to_target, p=2, dim=-1) / self.dt
+        # TODO: Do I need the self.dt?
+        distance_to_target = torch.norm(self.to_target, p=2, dim=-1) # / self.dt
+
+        arm_joint_dof_pos = self.franka_dof_pos[:, 3:-2]
+        penalty_joint_limit = self._joint_limit_penalty(arm_joint_dof_pos)
+        #print("penalty_joint_limit", penalty_joint_limit)
         
         reward = torch.zeros_like(self.rew_buf)
-        reward -= self.action_penalty_scale * action_penalty - 0.01 * distance_to_target
+        reward = reward - self.action_penalty_scale * action_penalty - 0.2 * distance_to_target - 0.02 * penalty_joint_limit
         #print("action penalty", action_penalty, "scaled", self.action_penalty_scale * action_penalty)
         #print("distance", distance_to_target, "scaled", 0.01 * distance_to_target)
+        #print("reward", reward)
         self.rew_buf[:] = reward
+    
+    def _joint_limit_penalty(self, values):
+        # neutral position of joints
+        neutral = torch.tensor([0,0,0,-1.5,0,2.0,0], device=self._device)
+        # weights for each joint how much to penalize them incase they differ a lot from neutral
+        weights = torch.tensor([1.0, 1, 1.5, 1, 1, 2.0, 1], device=self._device)
+        return torch.sum(torch.abs(values-neutral) * weights, axis=1)
 
     def is_done(self) -> None:
         # reset if drawer is open or max length reached

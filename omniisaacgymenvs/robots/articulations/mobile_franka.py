@@ -35,15 +35,17 @@ class MobileFranka(Robot):
         self._name = name
 
         self._position = torch.tensor([0.0, 0.0, 0.0]) if translation is None else translation
-        self._orientation = torch.tensor([0.0, 0.0, 0.0, 1.0]) if orientation is None else orientation
+        # turn the robot 180 degrees, for some reason it was pointed to wrong direction default orientation: ([0.0, 0.0, 0.0, 1.0])
+        self._orientation = torch.tensor([1.0, 0.0, 0.0, 0.0]) if orientation is None else orientation 
 
         if self._usd_path is None:
             #assets_root_path = get_assets_root_path()
             assets_root_path = "omniverse://localhost/NVIDIA/Assets/Isaac/2022.2.0"
-            if assets_root_path is None:
-                carb.log_error("Could not find Isaac Sim assets folder")
+            #if assets_root_path is None:
+            #    carb.log_error("Could not find Isaac Sim assets folder")
             #self._usd_path = assets_root_path + "/Isaac/Robots/Franka/franka_instanceable.usd"
-            self._usd_path = assets_root_path + "/Isaac/Robots/Clearpath/RidgebackFranka/ridgeback_franka.usd"
+            #self._usd_path = assets_root_path + "/Isaac/Robots/Clearpath/RidgebackFranka/ridgeback_franka.usd"
+            self._usd_path = "/home/eetu/multi-agent-rl-omni/assets/ridgeback_franka/ridgeback_franka_instanceable.usd"
 
         add_reference_to_stage(self._usd_path, prim_path)
         
