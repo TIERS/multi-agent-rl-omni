@@ -13,7 +13,23 @@ Use zerotier or dwservice
 Follow the installation section below. The "pythonsh" part is the same as "PYTHON_PATH". For example in .bashrc add
 
 ```bash
-alias pythonsh=~/.local/share/ov/pkg/isaac_sim-2022.1.1/python.sh
+alias pythonsh=~/.local/share/ov/pkg/isaac_sim-2022.2.0/python.sh
+```
+
+## MobileFranka single agent environment
+
+cd to omniisaacgymenvs
+
+Train with 
+```bash
+pythonsh scripts/rlgames_train.py task=MobileFranka
+```
+
+You can vary the parallel environments number by num_envs argument:
+* rl-games requires `minibatch_size` defined in the training config to be a factor of `horizon_length * num_envs`. If this is not the case, you may see an assertion error `assert(self.batch_size % self.minibatch_size == 0)`. Please adjust the parameters in the training config `yaml` file accordingly.
+* Good minibatch size is usually (horizon_length * num_envs) / 2 
+```bash
+pythonsh scripts/rlgames_train.py task=MobileFranka num_envs=512
 ```
 
 ## SKRL - RL library that has support for NVIDIA Omniverse Isaac Gym environments
