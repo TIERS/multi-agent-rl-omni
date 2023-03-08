@@ -69,8 +69,9 @@ class MobileFrankaMARLTask(RLTask):
         control_frequency = 120.0 / self._task_cfg["env"]["controlFrequencyInv"] # 30
         self.dt = 1/control_frequency
 
-        self._num_observations = 30 #23
-        self._num_actions = 12
+        self._num_observations = 32 #23
+        self._num_actions = 9
+        self._num_agents = 2
 
         RLTask.__init__(self, name, env)
         return
@@ -107,7 +108,7 @@ class MobileFrankaMARLTask(RLTask):
 
     def get_franka(self):
         mobile_franka = MobileFranka(prim_path=self.default_zero_env_path + "/mobile_franka", name="mobile_franka")
-        self._sim_config.apply_articulation_settings("franka", get_prim_at_path(mobile_franka.prim_path), self._sim_config.parse_actor_config("franka"))     
+        self._sim_config.apply_articulation_settings("mobile_franka", get_prim_at_path(mobile_franka.prim_path), self._sim_config.parse_actor_config("mobile_franka"))     
 
     def init_data(self) -> None:
         def get_env_local_pose(env_pos, xformable, device):
@@ -230,7 +231,7 @@ class MobileFrankaMARLTask(RLTask):
 
         self.to_target = self.target_positions - self.franka_lfinger_pos
 
-        self.obs_buf = torch.hstack((
+        obs = torch.hstack((
             base_pos_xy, 
             base_yaw, 
             arm_dof_pos_scaled,
@@ -240,10 +241,18 @@ class MobileFrankaMARLTask(RLTask):
             self.franka_lfinger_pos,
             self.target_positions
         )).to(dtype=torch.float32)
+        
+        base_id = torch.tensor([1.0, 0.0], device=self._device)
+        arm_id = torch.tensor([0.0, 1.0], device=self._device)
+        base_obs = torch.hstack((obs, base_id.repeat(self.num_envs, 1)))
+        arm_obs = torch.hstack((obs, arm_id.repeat(self.num_envs, 1)))
+
+        self.obs_buf = torch.vstack((base_obs, arm_obs))
+
         #input()
 
-        #print(obs)
-        #print(obs.shape)
+        #print(self.obs_buf)
+        #print(self.obs_buf.shape)
         #input()
 
         #print("rotation", rot)
@@ -293,8 +302,29 @@ class MobileFrankaMARLTask(RLTask):
         if len(reset_env_ids) > 0:
             self.reset_idx(reset_env_ids)
 
-        self.actions = actions.clone().to(self._device)
-        targets = self.franka_dof_targets + self.franka_dof_speed_scales * self.dt * self.actions * self.action_scale
+        raw_actions = actions.clone().to(self._device)
+        
+        base_actions = raw_actions[:self._num_envs, :2]
+        arm_actions = raw_actions[self._num_envs:]
+        
+
+        combined_actions = torch.hstack((
+            base_actions[:,0].unsqueeze(1),
+            torch.zeros((base_actions.shape[0], 1), device=self._device),
+            base_actions[:,1].unsqueeze(1),
+            arm_actions
+        ))
+
+        # print("actions", actions.shape)
+        # print("base_actions", base_actions.shape)
+        # print("arm_actions", arm_actions.shape)
+        # print("combined_actions", combined_actions.shape)
+        # print(combined_actions)
+        # input()
+
+        self.actions = combined_actions
+        
+        targets = self.franka_dof_targets + self.franka_dof_speed_scales * self.dt * combined_actions * self.action_scale
         self.franka_dof_targets[:] = torch.clamp(targets, self.franka_dof_lower_limits, self.franka_dof_upper_limits)
         env_ids_int32 = torch.arange(self._mobilefrankas.count, dtype=torch.int32, device=self._device)
 
@@ -303,14 +333,14 @@ class MobileFrankaMARLTask(RLTask):
         #self.actions[:, 2] = 0.5 # angular z
 
         # TODO make the scaling values part of configs
-        action_x = self.actions[:, 0] * 1.0
+        action_x = combined_actions[:, 0] * 1.0
         action_y = torch.zeros(self._mobilefrankas.count, device=self._device)
-        action_yaw = self.actions[:, 2] * 0.75
+        action_yaw = combined_actions[:, 2] * 0.75
 
         vel_targets = self._calculate_velocity_targets(action_x, action_y, action_yaw)
 
         # set the position targets for base joints to the current position
-        #self.franka_dof_targets[:, :3] = self.franka_dof_pos[:, :3]
+        self.franka_dof_targets[:, :3] = self.franka_dof_pos[:, :3]
         #print("self.franka_dof_targets", self.franka_dof_targets)
         artic_vel_targets = torch.zeros_like(self.franka_dof_targets)
         artic_vel_targets[:, :3] = vel_targets
@@ -347,6 +377,7 @@ class MobileFrankaMARLTask(RLTask):
         self.franka_dof_targets[env_ids, :] = pos
         self.franka_dof_pos[env_ids, :] = pos
 
+        #print(self.franka_dof_targets[env_ids])
         self._mobilefrankas.set_joint_position_targets(self.franka_dof_targets[env_ids], indices=indices)
         self._mobilefrankas.set_joint_positions(dof_pos, indices=indices)
         self._mobilefrankas.set_joint_velocities(dof_vel, indices=indices)

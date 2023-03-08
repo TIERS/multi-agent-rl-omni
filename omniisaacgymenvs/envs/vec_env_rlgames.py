@@ -76,6 +76,10 @@ class VecEnvRLGames(VecEnvBase):
         
         obs_dict = {"obs": self._obs, "states": self._states}
 
+        if self._task.num_agents > 1:
+            self._rew = self._rew.repeat(self._task.num_agents)
+            self._resets = self._resets.repeat(self._task.num_agents)
+
         return obs_dict, self._rew, self._resets, self._extras
 
     def reset(self):
@@ -84,7 +88,10 @@ class VecEnvRLGames(VecEnvBase):
         print(f"[{now}] Running RL reset")
 
         self._task.reset()
-        actions = torch.zeros((self.num_envs, self._task.num_actions), device=self._task.rl_device)
+        actions = torch.zeros((self.num_envs*self._task._num_agents, self._task.num_actions), device=self._task.rl_device)
         obs_dict, _, _, _ = self.step(actions)
 
         return obs_dict
+    
+    def get_number_of_agents(self):
+        return self._task.num_agents
