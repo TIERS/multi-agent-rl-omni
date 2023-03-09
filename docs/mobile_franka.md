@@ -1,8 +1,9 @@
-# Mobile Franka task specification
+# Mobile Franka MARL task specification
 
 ## Observation space
 
 - size 32, continuous (box) space, from -inf to inf
+- every step returns tensor of shape (2, 32), one obs for each agent
 
 Each observation consists of
 
@@ -25,6 +26,8 @@ Currently both agents observe the same full observations.
 Because the actions for the agents are heterogenous, action padding is used. Action padding means that we pad the actions to be the largest space and each agent only uses the actions that belong to its action space. As we include agent id in the observations the policy is conditioned to give different actions for different agents.
 
 - size 9, continuous (box) space, from -1 to 1
+
+Policy returns tensor of shape (num_envs * num_agents, num_actions) where first half are the actions for base and second half are the actions for the arm.
 
 ### Arm agent
 - 9 actions control roughly the efforts for each joint (7 angles and 2 distances for fingers)
