@@ -10,11 +10,15 @@ Use zerotier or dwservice
 
 ## Environment setup
 
-Follow the installation section below. The "pythonsh" part is the same as "PYTHON_PATH". For example in .bashrc add
+Only Isaac Sim version 2022.2.0 is supported.
+
+Follow the [installation section below](#installation). The "pythonsh" part is the same as "PYTHON_PATH". For example in .bashrc add
 
 ```bash
 alias pythonsh=~/.local/share/ov/pkg/isaac_sim-2022.2.0/python.sh
 ```
+
+You should update self._usd_path on line 48 in omniisaacgymenvs/robots/articulations/mobile_franka.py to be the specific path on your computer. (TODO figure out how to automatically detect the path.)
 
 ## MobileFranka single agent environment
 
@@ -31,6 +35,19 @@ You can vary the parallel environments number by num_envs argument:
 ```bash
 pythonsh scripts/rlgames_train.py task=MobileFranka num_envs=512
 ```
+
+## MobileFranka multi agent environment
+
+cd to omniisaacgymenvs
+
+Train with 
+```bash
+pythonsh scripts/rlgames_train.py task=MobileFrankaMARL
+```
+
+Tested with num_envs=512 and minibatch_size=4096
+
+[More info on Multi agent task specification](/docs/mobile_franka.md) 
 
 ## SKRL - RL library that has support for NVIDIA Omniverse Isaac Gym environments
 
