@@ -282,5 +282,6 @@
 		"/home/eetu/OmniIsaacGymEnvs/omniisaacgymenvs",
 ],
 
-    "python.languageServer": "Pylance",
+	"python.languageServer": "Pylance",
+	"ros.distro": "noetic",
 }
