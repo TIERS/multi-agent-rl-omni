@@ -432,7 +432,7 @@ class MobileFrankaMARLTask(RLTask):
         #print("penalty_joint_limit", penalty_joint_limit)
         
         reward = torch.zeros_like(self.rew_buf)
-        reward = reward - self.action_penalty_scale * action_penalty - 0.2 * distance_to_target - 0.02 * penalty_joint_limit
+        reward = reward - self.action_penalty_scale * action_penalty - 0.2 * distance_to_target - 0.03 * penalty_joint_limit
         #print("action penalty", action_penalty, "scaled", self.action_penalty_scale * action_penalty)
         #print("distance", distance_to_target, "scaled", 0.01 * distance_to_target)
         #print("reward", reward)
@@ -442,7 +442,7 @@ class MobileFrankaMARLTask(RLTask):
         # neutral position of joints
         neutral = torch.tensor([0,0,0,-1.5,0,2.0,0], device=self._device)
         # weights for each joint how much to penalize them incase they differ a lot from neutral
-        weights = torch.tensor([1.0, 1, 1.5, 1, 1, 2.0, 1], device=self._device)
+        weights = torch.tensor([1.5, 1, 1.5, 1, 1, 2.0, 1], device=self._device)
         return torch.sum(torch.abs(values-neutral) * weights, axis=1)
 
     def is_done(self) -> None:
