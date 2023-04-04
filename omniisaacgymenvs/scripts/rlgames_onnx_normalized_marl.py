@@ -108,7 +108,7 @@ class RLGTrainer():
 
         import rl_games.algos_torch.flatten as flatten
         inputs = {
-            'obs' : torch.zeros((1,) + agent.obs_shape).to(agent.device),
+            'obs' : torch.zeros((2,) + agent.obs_shape).to(agent.device),
             'rnn_states' : agent.states,
         }
         with torch.no_grad():
@@ -128,25 +128,25 @@ class RLGTrainer():
 
         outputs = ort_model.run(
             None,
-            {"obs": np.zeros((1,)+agent.obs_shape).astype(np.float32)},
+            {"obs": np.zeros((2,)+agent.obs_shape).astype(np.float32)},
         )
         print(outputs)
         #action = np.argmax(outputs[0])
         #print(action)
 
-        #input()
+        input()
 
         is_done = False
         env = agent.env
         obs = env.reset()
         #obs, reward, done, info = env.step(torch.tensor([[0.0]]))
-        print(obs)
+        #print(obs)
 
         obs = env.reset()
         #obs, reward, done, info = env.step(torch.tensor([[0.0]]))
         print(obs)
         
-        #input()
+        input()
         #input()
         #prev_screen = env.render(mode='rgb_array')
         #plt.imshow(prev_screen)
@@ -154,11 +154,12 @@ class RLGTrainer():
         num_steps = 0
         while not is_done:
             outputs = ort_model.run(None, {"obs": obs["obs"].cpu().numpy()},)
-            #print("outputs[0]", outputs[0])
-            mu = outputs[0].squeeze(0)
-            sigma = np.exp(outputs[1].squeeze(0))
+            print("outputs[0]", outputs[0])
+            mu = outputs[0] #.squeeze(0)
+            sigma = np.exp(outputs[1]) #.squeeze(0))
             action = np.random.normal(mu, sigma)
             action = torch.tensor(action)
+            #action = torch.tensor(mu)
             print(mu, sigma, action)
             #print(action)
             #print(obs)
@@ -167,7 +168,7 @@ class RLGTrainer():
             obs, reward, done, info = env.step(action)
             total_reward += reward
             num_steps += 1
-            is_done = done
+            is_done = done[0]
             #screen = env.render(mode='rgb_array')
             #plt.imshow(screen)
             #display.display(plt.gcf())
