@@ -7,6 +7,7 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from geometry_msgs.msg import PoseStamped
 import tf2_ros
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
+from geometry_msgs.msg import Twist
 
 import onnxruntime as ort
 import numpy as np
@@ -23,8 +24,11 @@ class MobileFrankaRLNode:
         self.optitrack_pose_sub = rospy.Subscriber('/vrpn_client_node/bighusky/pose', PoseStamped, self.optitrack_callback)
         self.trajectory_goal_pub = rospy.Publisher("/position_joint_trajectory_controller/follow_joint_trajectory/goal", FollowJointTrajectoryActionGoal, queue_size=20)
         #self.gripper_goal_pub = rospy.Publisher("/franka_gripper/gripper_action/goal", GripperCommandActionGoal, queue_size=20)
+        self.base_cmd_vel_pub = rospy.Publisher("/husky/raw_cmd_vel", Twist, queue_size=20)
         
-        self.ort_model = ort.InferenceSession("mobilefranka.onnx")
+        #self.ort_model = ort.InferenceSession("mobilefranka.onnx")
+        self.ort_model = ort.InferenceSession("mobilefranka_no_base_vel.onnx")
+        #self.ort_model = ort.InferenceSession("mobilefranka_no_base_vel_yaw_fix_easier_target.onnx")
 
         self.joint_positions = np.zeros(9)
         self.joint_velocities = np.zeros(9)
@@ -34,6 +38,8 @@ class MobileFrankaRLNode:
         self.upper_limits = np.array([ 2.8973,  1.7628,  2.8973, -0.0698,  2.8973,  3.7525,  2.8973,  0.0400, 0.0400])
 
         default_joint_pos = [0.0, -0.7856, 0.0, -2.356, 0.0, 1.572, 0.7854, 0.035, 0.035]
+
+        self.target_pos = np.array([3.0, 1.0, 0.5])
         self.joint_targets = None
 
         self.base_position = None
@@ -60,7 +66,7 @@ class MobileFrankaRLNode:
 
         rospy.Timer(rospy.Duration(self.dt), self.send_control)
 
-        rospy.Timer(rospy.Duration(1/30.0), self.update_base_pose)
+        rospy.Timer(rospy.Duration(1/15.0), self.update_base_pose)
 
         #rospy.Timer(rospy.Duration(1/10.0), self.update_base_velocity)
 
@@ -106,16 +112,26 @@ class MobileFrankaRLNode:
             roll, pitch, yaw = euler_from_quaternion(base_quat)
             #print("yaw % 2*np.pi", yaw % (2*np.pi))
             self.base_yaw = yaw % (2*np.pi)
-            left_finger_trans = self.tfBuffer.lookup_transform('husky_link', 'panda_leftfinger', rospy.Time())
+            left_finger_trans = self.tfBuffer.lookup_transform('universe', 'panda_leftfinger', rospy.Time())
             left_finger_position = np.array([left_finger_trans.transform.translation.x, left_finger_trans.transform.translation.y, left_finger_trans.transform.translation.z])
-            self.left_finger_position = self.base_position + left_finger_position
+            self.left_finger_position = left_finger_position - self.first_position
             #print("self.base_position ", self.base_position)
             #print("self.left_finger_position", self.left_finger_position)
+            print("base x:", '{:.3f}'.format(self.base_position[0]))
+            print("base y:", '{:.3f}'.format(self.base_position[1]))
+            print("base yaw:", '{:.3f}'.format(self.base_yaw))
+            print("left finger x:", '{:.3f}'.format(self.left_finger_position[0]))
+            print("left finger y:", '{:.3f}'.format(self.left_finger_position[1]))
+            print("left finger z:", '{:.3f}'.format(self.left_finger_position[2]))
+            print("distance from target:", np.linalg.norm([self.target_pos - self.left_finger_position]))
+            print("-----------------")
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
             print("tf2_ros error")
         
         # tf.transformations.euler_from_quaternion
         # tf.transformations.quaternion_from_euler
+
+        
     
     def optitrack_callback(self, msg):
         # get the first position as the origin
@@ -151,105 +167,144 @@ class MobileFrankaRLNode:
             else:
                 self.joint_targets = self.joint_positions
         
+
+        
+        # Isaac sim obs
+        # obs = torch.hstack((
+        #     base_pos_xy, 
+        #     base_yaw, 
+        #     arm_dof_pos_scaled,
+        #     #base_vel_xy, 
+        #     #base_angvel_z, 
+        #     franka_dof_vel[:, 3:] * self.dof_vel_scale,
+        #     self.franka_lfinger_pos,
+        #     self.target_positions
+        # )).to(dtype=torch.float32)
+        #
+        # base_id = torch.tensor([1.0, 0.0], device=self._device)
+        # arm_id = torch.tensor([0.0, 1.0], device=self._device)
+
         #self.arm_move_group.get_current_joint_values()
-
-        # scale position and velocities accordingly
-        pos_scaled = 2.0 * (self.joint_positions - self.lower_limits) / (self.upper_limits - self.lower_limits) - 1.0
-        vel_scaled = self.joint_velocities * 0.1
-
-        to_target = np.array([0.5, 0.5, -0.5])
-
-        # if self.task == "ground":
-        #     observation = np.concatenate((pos_scaled, vel_scaled, to_target)).astype(np.float32)
-        # else:
-        #     observation = np.concatenate((pos_scaled, vel_scaled)).astype(np.float32)
         
-        observation = np.zeros((2,)+(32,)).astype(np.float32)
+        try:
+            base_pos_xy = self.base_position[:2]
+            base_yaw = np.array([self.base_yaw])
+            
+            # scale position and velocities accordingly
+            pos_scaled = 2.0 * (self.joint_positions - self.lower_limits) / (self.upper_limits - self.lower_limits) - 1.0
+            vel_scaled = self.joint_velocities * 0.1
 
-        observation = np.array([
-            [ 1.2193e-01, -9.2775e-02,  1.5526e-02,  1.8618e-03, -3.9557e-01,
-            8.0547e-03, -5.0866e-01,  3.3527e-02,  1.1909e-01,  2.7887e-01,
-            1.0000e+00,  8.3886e-01, -1.1650e-06, -1.9033e-07,  3.9978e-09,
-            -2.2243e-05, -2.7235e-03,  2.2866e-04, -1.2848e-02, -2.1203e-05,
-            -7.6256e-04, -2.3298e-05,  4.3954e-06, -3.4108e-06,  7.5987e-01,
-            -9.5171e-02,  8.5100e-01,  3.0000e+00,  1.0000e+00,  5.0000e-01,
-            1.0000e+00,  0.0000e+00],
-            [ 1.2193e-01, -9.2775e-02,  1.5526e-02,  1.8618e-03, -3.9557e-01,
-            8.0547e-03, -5.0866e-01,  3.3527e-02,  1.1909e-01,  2.7887e-01,
-            1.0000e+00,  8.3886e-01, -1.1650e-06, -1.9033e-07,  3.9978e-09,
-            -2.2243e-05, -2.7235e-03,  2.2866e-04, -1.2848e-02, -2.1203e-05,
-            -7.6256e-04, -2.3298e-05,  4.3954e-06, -3.4108e-06,  7.5987e-01,
-            -9.5171e-02,  8.5100e-01,  3.0000e+00,  1.0000e+00,  5.0000e-01,
-            0.0000e+00,  1.0000e+00]]).astype(np.float32)
-        #observation = observation.reshape((1,-1))
+            left_finger_pos = self.left_finger_position
 
-        # isaac code for observations
-        # prop_pos = self._props.get_world_poses(clone=False)[0]
-        # self.to_target = prop_pos - hand_pos
-        
-        # self.obs_buf = torch.cat(
-        #     (
-        #         dof_pos_scaled,
-        #         franka_dof_vel * self.dof_vel_scale,
-        #         self.to_target,
-        #     ),
-        #     dim=-1,
-        # )
-        
-        outputs = self.ort_model.run(None, {"obs": observation})
-        mu = outputs[0]
-        sigma = np.exp(outputs[1])
-        action = np.random.normal(mu, sigma)
-        action = action[1] # arm action
+            target_pos = self.target_pos
+            base_id = np.array([1.0, 0.0])
+            arm_id = np.array([0.0, 1.0])
 
-        # isaac code for setting joint position targets          
-        # targets = self.franka_dof_targets + self.franka_dof_speed_scales * self.dt * self.actions * self.action_scale
-        # self.franka_dof_targets[:] = torch.clamp(targets, self.franka_dof_lower_limits, self.franka_dof_upper_limits)
+            base_observation = np.concatenate((base_pos_xy, base_yaw, pos_scaled, vel_scaled, left_finger_pos, target_pos, base_id)).astype(np.float32)
+            arm_observation = np.concatenate((base_pos_xy, base_yaw, pos_scaled, vel_scaled, left_finger_pos, target_pos, arm_id)).astype(np.float32)
 
-        # speed scales are changed from isaac sim to be 0.1 times the isaac sim values
-        dof_speed_scales = np.array([0.1, 0.1 ,0.1 ,0.1, 0.1, 0.1, 0.1, 0.01, 0.01])
-        #dof_speed_scales = np.array([0.01, 0.01 ,0.01 ,0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
-        #dof_speed_scales = np.array([1, 1 ,1 ,1, 1, 1, 1, 0.1, 0.1])
-        targets = self.joint_targets + dof_speed_scales * self.dt * action * 7.5
-        self.joint_targets = np.clip(targets, self.lower_limits, self.upper_limits)
+            observation = np.vstack((base_observation, arm_observation))
 
-        # set the goal for the arm joints (not gripper)
-        #print("self.joint_positions", self.joint_positions)
-        joint_goal = self.joint_targets[:7]
-        
-        # joint_goal = self.joint_positions[:7]
-        # joint_goal = [
-        #     0.00125, 
-        #     -0.78564, 
-        #     -0.00131, 
-        #     -2.35635,
-        #     -0.00366,
-        #     1.57296,
-        #     0.79711
-        # ]
+            # if self.task == "ground":
+            #     observation = np.concatenate((pos_scaled, vel_scaled, to_target)).astype(np.float32)
+            # else:
+            #     observation = np.concatenate((pos_scaled, vel_scaled)).astype(np.float32)
+            
+            #observation = observation.reshape((1,-1))
 
-        #print(joint_goal)
+            # isaac code for observations
+            # prop_pos = self._props.get_world_poses(clone=False)[0]
+            # self.to_target = prop_pos - hand_pos
+            
+            # self.obs_buf = torch.cat(
+            #     (
+            #         dof_pos_scaled,
+            #         franka_dof_vel * self.dof_vel_scale,
+            #         self.to_target,
+            #     ),
+            #     dim=-1,
+            # )
+            
+            outputs = self.ort_model.run(None, {"obs": observation})
+            mu = outputs[0]
+            sigma = np.exp(outputs[1])
+            action = np.random.normal(mu, sigma)
+            action = np.clip(action, -1.0, 1.0)
 
-        goal = FollowJointTrajectoryActionGoal()
+            base_action = action[0]
+            arm_action = action[1]
 
-        point = JointTrajectoryPoint()
-        point.positions = joint_goal
-        # this time_from_start is important, otherwise it won't work
-        point.time_from_start.nsecs = 500000000
-        goal.goal.trajectory.points.append(point)
+            # isaac code for setting joint position targets          
+            # targets = self.franka_dof_targets + self.franka_dof_speed_scales * self.dt * self.actions * self.action_scale
+            # self.franka_dof_targets[:] = torch.clamp(targets, self.franka_dof_lower_limits, self.franka_dof_upper_limits)
 
-        joint_names = [
-            "panda_joint1",
-            "panda_joint2",
-            "panda_joint3",
-            "panda_joint4",
-            "panda_joint5",
-            "panda_joint6", 
-            "panda_joint7"
-        ]
-        goal.goal.trajectory.joint_names = joint_names
-        
-        self.trajectory_goal_pub.publish(goal)
+            # speed scales are changed from isaac sim to be 0.1 times the isaac sim values
+            dof_speed_scales = np.array([0.1, 0.1 ,0.1 ,0.1, 0.1, 0.1, 0.1, 0.01, 0.01]) * 0.1
+            #dof_speed_scales = np.array([0.01, 0.01 ,0.01 ,0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
+            #dof_speed_scales = np.array([1, 1 ,1 ,1, 1, 1, 1, 0.1, 0.1])
+            targets = self.joint_targets + dof_speed_scales * self.dt * arm_action * 7.5
+            self.joint_targets = np.clip(targets, self.lower_limits, self.upper_limits)
+
+            # set the goal for the arm joints (not gripper)
+            #print("self.joint_positions", self.joint_positions)
+            joint_goal = self.joint_targets[:7]
+            
+            # joint_goal = self.joint_positions[:7]
+            # joint_goal = [
+            #     0.00125, 
+            #     -0.78564, 
+            #     -0.00131, 
+            #     -2.35635,
+            #     -0.00366,
+            #     1.57296,
+            #     0.79711
+            # ]
+
+            #print(joint_goal)
+
+            goal = FollowJointTrajectoryActionGoal()
+
+            point = JointTrajectoryPoint()
+            point.positions = joint_goal
+            # this time_from_start is important, otherwise it won't work
+            point.time_from_start.nsecs = 500000000
+            goal.goal.trajectory.points.append(point)
+
+            joint_names = [
+                "panda_joint1",
+                "panda_joint2",
+                "panda_joint3",
+                "panda_joint4",
+                "panda_joint5",
+                "panda_joint6", 
+                "panda_joint7"
+            ]
+            goal.goal.trajectory.joint_names = joint_names
+            
+            #print("joint_positions", self.joint_positions[:7])
+            #print("joint_goal", joint_goal)
+            #print("scaled_action", dof_speed_scales * self.dt * arm_action * 7.5)
+
+            self.trajectory_goal_pub.publish(goal)
+
+            # publish base actions as twist message, base_action[0] is the linear velocity, base_action[1] is the angular velocity
+            twist = Twist()
+            twist.linear.x = base_action[0] * 0.5 * 0.2
+            twist.angular.z = base_action[1] * 0.375 * 0.1
+            #twist.linear.x = 0.1
+            #twist.angular.z = 0.0
+
+            #print("base cmd", twist.linear.x, twist.angular.z)
+
+            self.base_cmd_vel_pub.publish(twist)
+
+            
+            #print(self.left_finger_position)
+
+
+        except Exception as e:
+            print(type(e))
+            pass
 
 
 if __name__ == '__main__':
