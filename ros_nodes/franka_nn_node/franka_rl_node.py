@@ -17,7 +17,7 @@ class RLNode:
 
         self.arm_joint_sub = rospy.Subscriber('/franka_state_controller/joint_states', JointState, self.arm_callback)
         self.gripper_joint_sub = rospy.Subscriber('/franka_gripper/joint_states', JointState, self.gripper_callback)
-        self.trajectory_goal_pub = rospy.Publisher("/effort_joint_trajectory_controller/follow_joint_trajectory/goal", FollowJointTrajectoryActionGoal, queue_size=20)
+        self.trajectory_goal_pub = rospy.Publisher("/position_joint_trajectory_controller/follow_joint_trajectory/goal", FollowJointTrajectoryActionGoal, queue_size=20)
         self.gripper_goal_pub = rospy.Publisher("/franka_gripper/gripper_action/goal", GripperCommandActionGoal, queue_size=20)
         
         self.task = ""
@@ -105,7 +105,7 @@ class RLNode:
         # self.franka_dof_targets[:] = torch.clamp(targets, self.franka_dof_lower_limits, self.franka_dof_upper_limits)
 
         # speed scales are changed from isaac sim to be 0.1 times the isaac sim values
-        dof_speed_scales = np.array([0.1, 0.1 ,0.1 ,0.1, 0.1, 0.1, 0.1, 0.01, 0.01])
+        dof_speed_scales = np.array([0.1, 0.1 ,0.1 ,0.1, 0.1, 0.1, 0.1, 0.01, 0.01]) * 0.1
         #dof_speed_scales = np.array([0.01, 0.01 ,0.01 ,0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
         #dof_speed_scales = np.array([1, 1 ,1 ,1, 1, 1, 1, 0.1, 0.1])
         targets = self.joint_targets + dof_speed_scales * self.dt * action * 7.5
@@ -126,7 +126,7 @@ class RLNode:
         #     0.79711
         # ]
 
-        print(joint_goal)
+        print("joint_goal", joint_goal)
 
         # slow python interface, maybe useful for some other tasks?
         # The go command can be called with joint values, poses, or without any

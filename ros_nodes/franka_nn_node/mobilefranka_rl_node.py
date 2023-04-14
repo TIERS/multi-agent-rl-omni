@@ -1,6 +1,4 @@
 import rospy
-from std_msgs.msg import Int64
-from std_srvs.srv import SetBool
 from sensor_msgs.msg import JointState
 from control_msgs.msg import FollowJointTrajectoryActionGoal, GripperCommandActionGoal
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -101,18 +99,22 @@ class MobileFrankaRLNode:
     def update_base_pose(self, timer_event):
         # get the first position as the origin
         if self.first_position is None:
-            optitrack_trans = self.tfBuffer.lookup_transform('universe', 'husky_link', rospy.Time())
-            self.first_position = np.array([optitrack_trans.transform.translation.x, optitrack_trans.transform.translation.y, optitrack_trans.transform.translation.z])
+            try:
+                optitrack_trans = self.tfBuffer.lookup_transform('universe', 'husky_link', rospy.get_rostime(), rospy.Duration(1.0))
+                self.first_position = np.array([optitrack_trans.transform.translation.x, optitrack_trans.transform.translation.y, optitrack_trans.transform.translation.z])
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+                print("tf error")
+                return
         
         # get the current position and rotation relative to the origin 
         try:
-            husky_trans = self.tfBuffer.lookup_transform('universe', 'husky_link', rospy.Time())
+            husky_trans = self.tfBuffer.lookup_transform('universe', 'husky_link', rospy.get_rostime(), rospy.Duration(1.0))
             self.base_position = np.array([husky_trans.transform.translation.x, husky_trans.transform.translation.y, husky_trans.transform.translation.z]) - self.first_position
             base_quat = np.array([husky_trans.transform.rotation.x, husky_trans.transform.rotation.y, husky_trans.transform.rotation.z, husky_trans.transform.rotation.w])
             roll, pitch, yaw = euler_from_quaternion(base_quat)
             #print("yaw % 2*np.pi", yaw % (2*np.pi))
             self.base_yaw = yaw % (2*np.pi)
-            left_finger_trans = self.tfBuffer.lookup_transform('universe', 'panda_leftfinger', rospy.Time())
+            left_finger_trans = self.tfBuffer.lookup_transform('universe', 'panda_leftfinger', rospy.get_rostime(), rospy.Duration(1.0))
             left_finger_position = np.array([left_finger_trans.transform.translation.x, left_finger_trans.transform.translation.y, left_finger_trans.transform.translation.z])
             self.left_finger_position = left_finger_position - self.first_position
             #print("self.base_position ", self.base_position)
@@ -126,7 +128,7 @@ class MobileFrankaRLNode:
             print("distance from target:", np.linalg.norm([self.target_pos - self.left_finger_position]))
             print("-----------------")
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
-            print("tf2_ros error")
+            print("tf error")
         
         # tf.transformations.euler_from_quaternion
         # tf.transformations.quaternion_from_euler
@@ -142,7 +144,7 @@ class MobileFrankaRLNode:
         # self.base_rotation = np.array([msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w])
         # print(self.base_position)
         # try:
-        #     trans = self.tfBuffer.lookup_transform('universe', 'husky_link', rospy.Time())
+        #     trans = self.tfBuffer.lookup_transform('universe', 'husky_link', rospy.get_rostime())
         #     print("trans", trans)
         # except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
         #     print("tf2_ros error")
@@ -167,8 +169,9 @@ class MobileFrankaRLNode:
             else:
                 self.joint_targets = self.joint_positions
         
-
-        
+        if self.first_position is None or self.base_position is None or self.left_finger_position is None:
+            print("position not available")
+            return
         # Isaac sim obs
         # obs = torch.hstack((
         #     base_pos_xy, 
@@ -304,6 +307,7 @@ class MobileFrankaRLNode:
 
         except Exception as e:
             print(type(e))
+            print(e)
             pass
 
 
