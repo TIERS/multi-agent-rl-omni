@@ -69,9 +69,11 @@ class MobileFrankaMARLTask(RLTask):
         control_frequency = 120.0 / self._task_cfg["env"]["controlFrequencyInv"] # 30
         self.dt = 1/control_frequency
 
-        self._num_observations = 32 #23
+        self._num_observations = 32 - 3 #23
         self._num_actions = 9
         self._num_agents = 2
+
+        self.initial_target_pos = np.array([2.0, 0.0, 0.5])
 
         RLTask.__init__(self, name, env)
         return
@@ -94,7 +96,7 @@ class MobileFrankaMARLTask(RLTask):
         target_cube = VisualCuboid(
             prim_path=self.default_zero_env_path + "/target_cube",
             #position=[3.0, 0.0, 0.5],
-            translation=[3.0, 1.0, 0.5],
+            translation=self.initial_target_pos,
             scale=np.array([0.1, 0.1, 0.1]),
             color=np.array([1, 0, 0]),
         )
@@ -185,6 +187,7 @@ class MobileFrankaMARLTask(RLTask):
         # yaw is in range 0-2pi do I want it to be -pi to pi
         roll, pitch, base_yaw = get_euler_xyz(base_rot)
         base_yaw = base_yaw.unsqueeze(1)
+        #print("base_rot, base_yaw", base_rot, base_yaw)
         # for rot in base_rot:
         #     base_rot_z.append(quat_to_euler_angles(rot)[2])
         # base_rot_z = torch.tensor(base_rot_z).unsqueeze(1).to(self._device)
@@ -235,12 +238,15 @@ class MobileFrankaMARLTask(RLTask):
             base_pos_xy, 
             base_yaw, 
             arm_dof_pos_scaled,
-            base_vel_xy, 
-            base_angvel_z, 
+            #base_vel_xy, 
+            #base_angvel_z, 
             franka_dof_vel[:, 3:] * self.dof_vel_scale,
             self.franka_lfinger_pos,
             self.target_positions
         )).to(dtype=torch.float32)
+
+        #print("obs", obs)
+        #input()
         
         base_id = torch.tensor([1.0, 0.0], device=self._device)
         arm_id = torch.tensor([0.0, 1.0], device=self._device)
@@ -324,7 +330,7 @@ class MobileFrankaMARLTask(RLTask):
 
         self.actions = combined_actions
         
-        targets = self.franka_dof_targets + self.franka_dof_speed_scales * self.dt * combined_actions * self.action_scale
+        targets = self.franka_dof_targets + self.franka_dof_speed_scales * self.dt * combined_actions * self.action_scale # * 0.1
         self.franka_dof_targets[:] = torch.clamp(targets, self.franka_dof_lower_limits, self.franka_dof_upper_limits)
         env_ids_int32 = torch.arange(self._mobilefrankas.count, dtype=torch.int32, device=self._device)
 
@@ -333,9 +339,9 @@ class MobileFrankaMARLTask(RLTask):
         #self.actions[:, 2] = 0.5 # angular z
 
         # TODO make the scaling values part of configs
-        action_x = combined_actions[:, 0] * 1.0
+        action_x = combined_actions[:, 0] * 1.0 # * 0.5
         action_y = torch.zeros(self._mobilefrankas.count, device=self._device)
-        action_yaw = combined_actions[:, 2] * 0.75
+        action_yaw = combined_actions[:, 2] * 0.75 # * 0.5
 
         vel_targets = self._calculate_velocity_targets(action_x, action_y, action_yaw)
 
@@ -382,7 +388,7 @@ class MobileFrankaMARLTask(RLTask):
         self._mobilefrankas.set_joint_positions(dof_pos, indices=indices)
         self._mobilefrankas.set_joint_velocities(dof_vel, indices=indices)
 
-        self.target_positions[:] = torch.tensor([3.0, 1.0, 0.5])
+        self.target_positions[:] = torch.tensor(self.initial_target_pos, device=self._device)
 
         # bookkeeping
         self.reset_buf[env_ids] = 0

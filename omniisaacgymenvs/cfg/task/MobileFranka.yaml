@@ -10,7 +10,7 @@ env:
   episodeLength: 500 # maybe need to play with this
   enableDebugVis: False
 
-  clipObservations: 5.0
+  clipObservations: 7.0
   clipActions: 1.0
 
   controlFrequencyInv: 2 # 4 for 30 Hz 2 for 60 hz, maybe need to play with this too
