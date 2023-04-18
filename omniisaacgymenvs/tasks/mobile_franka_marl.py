@@ -22,6 +22,8 @@ from omni.isaac.core.utils.stage import get_current_stage
 from omni.isaac.core.utils.torch.transformations import *
 #from omni.isaac.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
 from omni.isaac.core.utils.torch.rotations import get_euler_xyz
+from omni.isaac.core.prims import GeometryPrimView
+
 
 from omni.isaac.cloner import Cloner
 
@@ -75,6 +77,11 @@ class MobileFrankaMARLTask(RLTask):
 
         self.initial_target_pos = np.array([2.0, 0.0, 0.5])
 
+        # set the ranges for the target randomization
+        self.x_lim = [-3, 3]
+        self.y_lim = [-3, 3]
+        self.z_lim = [0.2, 1.2]
+
         RLTask.__init__(self, name, env)
         return
 
@@ -82,6 +89,13 @@ class MobileFrankaMARLTask(RLTask):
 
         self.get_franka()
         #self.get_cabinet()
+        target_cube = VisualCuboid(
+            prim_path=self.default_zero_env_path + "/target_cube",
+            #position=[3.0, 0.0, 0.5],
+            translation=self.initial_target_pos,
+            scale=np.array([0.1, 0.1, 0.1]),
+            color=np.array([1, 0, 0]),
+        )
         
         super().set_up_scene(scene, replicate_physics=False)
 
@@ -93,15 +107,10 @@ class MobileFrankaMARLTask(RLTask):
         scene.add(self._mobilefrankas._lfingers)
         scene.add(self._mobilefrankas._rfingers)
         scene.add(self._mobilefrankas._base)
-        target_cube = VisualCuboid(
-            prim_path=self.default_zero_env_path + "/target_cube",
-            #position=[3.0, 0.0, 0.5],
-            translation=self.initial_target_pos,
-            scale=np.array([0.1, 0.1, 0.1]),
-            color=np.array([1, 0, 0]),
-        )
         
-        scene.add(target_cube)
+        self._targets = GeometryPrimView(prim_paths_expr="/World/envs/.*/target_cube", name="target_view")
+        scene.add(self._targets)
+        #scene.add(target_cube)
         #scene.add(self._cabinets)
         #scene.add(self._cabinets._drawers)
 
@@ -377,6 +386,8 @@ class MobileFrankaMARLTask(RLTask):
             self.franka_dof_lower_limits,
             self.franka_dof_upper_limits,
         )
+        # randomize the yaw from 0 to 360 in degrees
+        pos[:, 2] = torch.rand((len(env_ids),), device=self._device) * 359.0
         dof_pos = torch.zeros((num_indices, self._mobilefrankas.num_dof), device=self._device)
         dof_vel = torch.zeros((num_indices, self._mobilefrankas.num_dof), device=self._device)
         dof_pos[:, :] = pos
@@ -388,7 +399,16 @@ class MobileFrankaMARLTask(RLTask):
         self._mobilefrankas.set_joint_positions(dof_pos, indices=indices)
         self._mobilefrankas.set_joint_velocities(dof_vel, indices=indices)
 
-        self.target_positions[:] = torch.tensor(self.initial_target_pos, device=self._device)
+        #self.target_positions[:] = torch.tensor(self.initial_target_pos, device=self._device)
+        rands = torch.rand((num_indices, 3), device=self._device)
+        
+        # modify rands to be in the range of the limits
+        rands[:, 0] = rands[:, 0] * (self.x_lim[1] - self.x_lim[0]) + self.x_lim[0]
+        rands[:, 1] = rands[:, 1] * (self.y_lim[1] - self.y_lim[0]) + self.y_lim[0]
+        rands[:, 2] = rands[:, 2] * (self.z_lim[1] - self.z_lim[0]) + self.z_lim[0]
+
+        self.target_positions[env_ids] = rands
+        self._targets.set_world_poses(self._env_pos + self.target_positions)
 
         # bookkeeping
         self.reset_buf[env_ids] = 0
