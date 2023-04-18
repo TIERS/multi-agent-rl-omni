@@ -153,14 +153,26 @@ class RLGTrainer():
         total_reward = 0
         num_steps = 0
         while not is_done:
+            #obs["obs"][:, 2] = 6.254
+
+            # add some noise to the pose observations to check if optitrack noise affects the performance
+            obs["obs"][:, :3] += torch.rand(3).to(agent.device) * 0.1
+            obs["obs"][:, 21:24] += torch.rand(3).to(agent.device) * 0.1
+            #obs["obs"][:, :3] = torch.zeros(3).to(agent.device)
+            #obs["obs"][:, 21:24] += torch.tensor([0.76, -0.09, 0.85]).to(agent.device)
+
+            # set the target location manually to test
+            obs["obs"][:, -5:-2] = torch.tensor([2.0, 1.0, 0.5]).to(agent.device)
+            
             outputs = ort_model.run(None, {"obs": obs["obs"].cpu().numpy()},)
-            print("outputs[0]", outputs[0])
+            #print("outputs[0]", outputs[0])
             mu = outputs[0] #.squeeze(0)
             sigma = np.exp(outputs[1]) #.squeeze(0))
             action = np.random.normal(mu, sigma)
+            action = np.clip(action, -1.0, 1.0)
             action = torch.tensor(action)
             #action = torch.tensor(mu)
-            print(mu, sigma, action)
+            #print(mu, sigma, action)
             #print(action)
             #print(obs)
             #self.polar_to_cartesian_coordinate(obs["obs"].cpu().numpy().squeeze()[:36], -np.pi, 0)
@@ -169,6 +181,7 @@ class RLGTrainer():
             total_reward += reward
             num_steps += 1
             is_done = done[0]
+            #print("onnx,obs", obs)
             #screen = env.render(mode='rgb_array')
             #plt.imshow(screen)
             #display.display(plt.gcf())
@@ -230,7 +243,8 @@ def parse_hydra_configs(cfg: DictConfig):
 
     # sets seed. if seed is -1 will pick a random one
     from omni.isaac.core.utils.torch.maths import set_seed
-    cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
+    #cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
+    cfg.seed = set_seed(-1, torch_deterministic=cfg.torch_deterministic)
 
 
     rlg_trainer = RLGTrainer(cfg, cfg_dict)
