@@ -25,7 +25,8 @@ class MobileFrankaRLNode:
         self.base_cmd_vel_pub = rospy.Publisher("/husky/raw_cmd_vel", Twist, queue_size=20)
         
         #self.ort_model = ort.InferenceSession("mobilefranka.onnx")
-        self.ort_model = ort.InferenceSession("mobilefranka_no_base_vel.onnx")
+        #self.ort_model = ort.InferenceSession("mobilefranka_no_base_vel.onnx")
+        self.ort_model = ort.InferenceSession("mobilefranka_randomized_targets_yaw2.onnx")
         #self.ort_model = ort.InferenceSession("mobilefranka_no_base_vel_yaw_fix_easier_target.onnx")
 
         self.joint_positions = np.zeros(9)
@@ -37,7 +38,7 @@ class MobileFrankaRLNode:
 
         default_joint_pos = [0.0, -0.7856, 0.0, -2.356, 0.0, 1.572, 0.7854, 0.035, 0.035]
 
-        self.target_pos = np.array([3.0, 1.0, 0.5])
+        self.target_pos = np.array([1, -2, 0.6])
         self.joint_targets = None
 
         self.base_position = None
@@ -292,14 +293,20 @@ class MobileFrankaRLNode:
 
             # publish base actions as twist message, base_action[0] is the linear velocity, base_action[1] is the angular velocity
             twist = Twist()
-            twist.linear.x = base_action[0] * 0.5 * 0.2
-            twist.angular.z = base_action[1] * 0.375 * 0.1
+            twist.linear.x = base_action[0] * 0.5 * 0.3 # check the speeds 0.2 is safe
+            twist.angular.z = base_action[1] * 0.375 * 0.15 # check the speeds 0.1 is safe
             #twist.linear.x = 0.1
             #twist.angular.z = 0.0
 
             #print("base cmd", twist.linear.x, twist.angular.z)
 
             self.base_cmd_vel_pub.publish(twist)
+
+            # TODO Need to publish the base action as moving average of the last 10 actions
+            # self.base_action_buffer.append(base_action)
+            # if len(self.base_action_buffer) > 10:
+            #     self.base_action_buffer.pop(0)
+            # base_action = np.mean(self.base_action_buffer, axis=0)
 
             
             #print(self.left_finger_position)
