@@ -31,7 +31,7 @@ env:
   actionPenaltyScale: 0.01
   fingerCloseRewardScale: 10.0
 
-  useLocalObs: False
+  useLocalObs: True
 
 sim:
   dt: 0.0083 # 1/120 s

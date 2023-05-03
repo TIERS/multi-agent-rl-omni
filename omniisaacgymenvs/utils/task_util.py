@@ -65,7 +65,8 @@ def initialize_task(config, env, init_sim=True):
         "Jetbot_CNN": JetbotTask,
         "FrankaExample": FrankaExampleTask,
         "MobileFranka": MobileFrankaTask,
-        "MobileFrankaMARL": MobileFrankaMARLTask
+        "MobileFrankaMARL": MobileFrankaMARLTask,
+        "MobileFrankaMARL_cv": MobileFrankaMARLTask
     }
 
     from .config_utils.sim_config import SimConfig

@@ -65,6 +65,8 @@ class MobileFrankaMARLTask(RLTask):
         self.action_penalty_scale = self._task_cfg["env"]["actionPenaltyScale"]
         self.finger_close_reward_scale = self._task_cfg["env"]["fingerCloseRewardScale"]
 
+        self.use_local_obs = self._task_cfg["env"]["useLocalObs"]
+
         self.distX_offset = 0.04
         #self.dt = 1/60.
         # these values depend on the task and how we interface with the real robot
@@ -74,6 +76,10 @@ class MobileFrankaMARLTask(RLTask):
         self._num_observations = 32 - 3 #23
         self._num_actions = 9
         self._num_agents = 2
+
+        if self.use_local_obs:
+            self._num_observations = 26
+            self._num_states = 27 + 3 #27
 
         self.initial_target_pos = np.array([2.0, 0.0, 0.5])
 
@@ -243,24 +249,56 @@ class MobileFrankaMARLTask(RLTask):
 
         self.to_target = self.target_positions - self.franka_lfinger_pos
 
-        obs = torch.hstack((
-            base_pos_xy, 
-            base_yaw, 
-            arm_dof_pos_scaled,
-            #base_vel_xy, 
-            #base_angvel_z, 
-            franka_dof_vel[:, 3:] * self.dof_vel_scale,
-            self.franka_lfinger_pos,
-            self.target_positions
-        )).to(dtype=torch.float32)
+        if self.use_local_obs:
+            # pad base_obs with zeros to match the arm_obs
+            base_obs = torch.hstack((
+                base_pos_xy,
+                base_yaw,
+                self.franka_lfinger_pos,
+                self.target_positions,
+                torch.zeros((self.num_envs, 15), device=self._device)
+            )).to(dtype=torch.float32)
+
+            arm_obs = torch.hstack((
+                arm_dof_pos_scaled,
+                franka_dof_vel[:, 3:] * self.dof_vel_scale,
+                self.franka_lfinger_pos,
+                self.target_positions
+            )).to(dtype=torch.float32)
+
+            self.states_buf = torch.hstack((
+                base_pos_xy,
+                base_yaw,
+                base_vel_xy, 
+                base_angvel_z, 
+                arm_dof_pos_scaled,
+                franka_dof_vel[:, 3:] * self.dof_vel_scale,
+                self.franka_lfinger_pos,
+                self.target_positions
+            )).to(dtype=torch.float32)
+
+        else:
+            obs = torch.hstack((
+                base_pos_xy, 
+                base_yaw, 
+                arm_dof_pos_scaled,
+                #base_vel_xy, 
+                #base_angvel_z, 
+                franka_dof_vel[:, 3:] * self.dof_vel_scale,
+                self.franka_lfinger_pos,
+                self.target_positions
+            )).to(dtype=torch.float32)
+
+            base_obs = obs
+            arm_obs = obs
 
         #print("obs", obs)
         #input()
         
         base_id = torch.tensor([1.0, 0.0], device=self._device)
         arm_id = torch.tensor([0.0, 1.0], device=self._device)
-        base_obs = torch.hstack((obs, base_id.repeat(self.num_envs, 1)))
-        arm_obs = torch.hstack((obs, arm_id.repeat(self.num_envs, 1)))
+        base_obs = torch.hstack((base_obs, base_id.repeat(self.num_envs, 1)))
+        arm_obs = torch.hstack((arm_obs, arm_id.repeat(self.num_envs, 1)))
 
         self.obs_buf = torch.vstack((base_obs, arm_obs))
 
