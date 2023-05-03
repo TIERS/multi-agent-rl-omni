@@ -45,7 +45,10 @@ class MobileFranka(Robot):
             #    carb.log_error("Could not find Isaac Sim assets folder")
             #self._usd_path = assets_root_path + "/Isaac/Robots/Franka/franka_instanceable.usd"
             #self._usd_path = assets_root_path + "/Isaac/Robots/Clearpath/RidgebackFranka/ridgeback_franka.usd"
-            self._usd_path = "/home/eetu/multi-agent-rl-omni/assets/ridgeback_franka/ridgeback_franka6_instanceable.usd"
+            from pathlib import Path
+            current_working_dir = Path.cwd()
+            self._usd_path = str(current_working_dir.parent) + "/assets/ridgeback_franka/ridgeback_franka6_instanceable.usd"
+            #self._usd_path = "/home/eetu/multi-agent-rl-omni/assets/ridgeback_franka/ridgeback_franka6_instanceable.usd"
             #self._usd_path = "/home/eetu/Desktop/ridgeback_franka6.usd"
 
 
