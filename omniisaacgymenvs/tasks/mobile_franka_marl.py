@@ -496,7 +496,10 @@ class MobileFrankaMARLTask(RLTask):
         #print("penalty_joint_limit", penalty_joint_limit)
         
         reward = torch.zeros_like(self.rew_buf)
-        reward = reward - self.action_penalty_scale * action_penalty - 0.2 * distance_to_target - 0.03 * penalty_joint_limit
+        reward +=  0.5 * torch.exp(-1.2 * distance_to_target) - self.action_penalty_scale * action_penalty - 0.03 * penalty_joint_limit
+        self.extras["rewards/distance_to_target"] = torch.mean(distance_to_target)
+        self.extras["rewards/penalty_joint_limit"] = torch.mean(penalty_joint_limit)
+        self.extras["rewards/action_penalty"] = torch.mean(action_penalty)
         #print("action penalty", action_penalty, "scaled", self.action_penalty_scale * action_penalty)
         #print("distance", distance_to_target, "scaled", 0.01 * distance_to_target)
         #print("reward", reward)
