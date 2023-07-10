@@ -117,14 +117,16 @@ class RLGTrainer():
             flattened_outputs = traced(*adapter.flattened_inputs)
             print(flattened_outputs)
         
-        torch.onnx.export(traced, *adapter.flattened_inputs, "mobilefranka.onnx", verbose=True, input_names=['obs'], output_names=['mu', 'log_std', 'value'])
+        export_file = "mobilefranka.onnx"
 
-        onnx_model = onnx.load("mobilefranka.onnx")
+        torch.onnx.export(traced, *adapter.flattened_inputs, export_file, verbose=True, input_names=['obs'], output_names=['mu', 'log_std', 'value'])
+
+        onnx_model = onnx.load(export_file)
 
         # Check that the model is well formed
         onnx.checker.check_model(onnx_model)
 
-        ort_model = ort.InferenceSession("mobilefranka.onnx")
+        ort_model = ort.InferenceSession(export_file)
 
         outputs = ort_model.run(
             None,
@@ -156,19 +158,20 @@ class RLGTrainer():
             #obs["obs"][:, 2] = 6.254
 
             # add some noise to the pose observations to check if optitrack noise affects the performance
-            obs["obs"][:, :3] += torch.rand(3).to(agent.device) * 0.1
-            obs["obs"][:, 21:24] += torch.rand(3).to(agent.device) * 0.1
+            obs["obs"][:, :3] += torch.rand(3).to(agent.device) * 0.05
+            obs["obs"][:, 21:24] += torch.rand(3).to(agent.device) * 0.05
             #obs["obs"][:, :3] = torch.zeros(3).to(agent.device)
             #obs["obs"][:, 21:24] += torch.tensor([0.76, -0.09, 0.85]).to(agent.device)
 
             # set the target location manually to test
-            obs["obs"][:, -5:-2] = torch.tensor([2.0, 1.0, 0.5]).to(agent.device)
+            # obs["obs"][:, -5:-2] = torch.tensor([2.0, 1.0, 0.5]).to(agent.device)
             
             outputs = ort_model.run(None, {"obs": obs["obs"].cpu().numpy()},)
             #print("outputs[0]", outputs[0])
             mu = outputs[0] #.squeeze(0)
             sigma = np.exp(outputs[1]) #.squeeze(0))
-            action = np.random.normal(mu, sigma)
+            #action = np.random.normal(mu, sigma)
+            action = mu
             action = np.clip(action, -1.0, 1.0)
             action = torch.tensor(action)
             #action = torch.tensor(mu)
