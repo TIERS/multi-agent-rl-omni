@@ -6,6 +6,8 @@ from geometry_msgs.msg import PoseStamped
 import tf2_ros
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 from geometry_msgs.msg import Twist
+from geometry_msgs.msg import PointStamped
+
 
 import onnxruntime as ort
 import numpy as np
@@ -23,11 +25,17 @@ class MobileFrankaRLNode:
         self.trajectory_goal_pub = rospy.Publisher("/position_joint_trajectory_controller/follow_joint_trajectory/goal", FollowJointTrajectoryActionGoal, queue_size=20)
         #self.gripper_goal_pub = rospy.Publisher("/franka_gripper/gripper_action/goal", GripperCommandActionGoal, queue_size=20)
         self.base_cmd_vel_pub = rospy.Publisher("/husky/raw_cmd_vel", Twist, queue_size=20)
+
+        self.target_pub = rospy.Publisher("/target", PointStamped, queue_size=20)
         
-        #self.ort_model = ort.InferenceSession("mobilefranka.onnx")
-        #self.ort_model = ort.InferenceSession("mobilefranka_no_base_vel.onnx")
-        self.ort_model = ort.InferenceSession("mobilefranka_randomized_targets_yaw2.onnx")
+        #self.ort_model = ort.InferenceSession("models/single_agent_mobilefranka.onnx")
+        self.ort_model = ort.InferenceSession("models/mobilefrankaMARL_cv.onnx")
+        #self.ort_model = ort.InferenceSession("models/m1_exp_reward_mobilefranka.onnx")
+
         #self.ort_model = ort.InferenceSession("mobilefranka_no_base_vel_yaw_fix_easier_target.onnx")
+
+        self.single_agent = False
+        self.use_cv = True
 
         self.joint_positions = np.zeros(9)
         self.joint_velocities = np.zeros(9)
@@ -38,7 +46,7 @@ class MobileFrankaRLNode:
 
         default_joint_pos = [0.0, -0.7856, 0.0, -2.356, 0.0, 1.572, 0.7854, 0.035, 0.035]
 
-        self.target_pos = np.array([1, -2, 0.6])
+        self.target_pos = np.array([0.4, -0.6, 0.5])
         self.joint_targets = None
 
         self.base_position = None
@@ -55,19 +63,23 @@ class MobileFrankaRLNode:
         self.tfBuffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.tfBuffer)
 
-        #moveit_commander.roscpp_initialize(sys.argv)
-        #rospy.init_node("move_group_python_interface_tutorial", anonymous=True)
-        #robot = moveit_commander.RobotCommander()
-        #self.arm_move_group = moveit_commander.MoveGroupCommander("panda_arm")
-        #self.gripper_move_group = moveit_commander.MoveGroupCommander("panda_hand")
-
         self.dt = 1 / 60.0 # 60 Hz
 
         rospy.Timer(rospy.Duration(self.dt), self.send_control)
 
-        rospy.Timer(rospy.Duration(1/15.0), self.update_base_pose)
+        rospy.Timer(rospy.Duration(1/30.0), self.update_base_pose)
 
         #rospy.Timer(rospy.Duration(1/10.0), self.update_base_velocity)
+    
+    def publish_target(self):
+        target = PointStamped()
+        target.header.frame_id = "universe"
+        target.header.stamp = rospy.Time.now()
+        target_point = self.target_pos + self.first_position
+        target.point.x = target_point[0]
+        target.point.y = target_point[1]
+        target.point.z = target_point[2]
+        self.target_pub.publish(target)
 
     def update_base_velocity(self, timer_event):
         """Calculate the base velocity in the x and y directions and the base yaw velocity"""
@@ -120,14 +132,23 @@ class MobileFrankaRLNode:
             self.left_finger_position = left_finger_position - self.first_position
             #print("self.base_position ", self.base_position)
             #print("self.left_finger_position", self.left_finger_position)
+            distance_from_target = np.linalg.norm([self.target_pos - self.left_finger_position])
             print("base x:", '{:.3f}'.format(self.base_position[0]))
             print("base y:", '{:.3f}'.format(self.base_position[1]))
             print("base yaw:", '{:.3f}'.format(self.base_yaw))
             print("left finger x:", '{:.3f}'.format(self.left_finger_position[0]))
             print("left finger y:", '{:.3f}'.format(self.left_finger_position[1]))
             print("left finger z:", '{:.3f}'.format(self.left_finger_position[2]))
-            print("distance from target:", np.linalg.norm([self.target_pos - self.left_finger_position]))
+            print("target x:", '{:.3f}'.format(self.target_pos[0]))
+            print("target y:", '{:.3f}'.format(self.target_pos[1]))
+            print("target z:", '{:.3f}'.format(self.target_pos[2]))
+            print("distance from target:", distance_from_target)
             print("-----------------")
+            # if distance_from_target < 0.08:
+            #     print("Goal reached!", "distance:", distance_from_target)
+            #     rospy.signal_shutdown()
+            self.publish_target()
+                
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
             print("tf error")
         
@@ -199,15 +220,56 @@ class MobileFrankaRLNode:
             vel_scaled = self.joint_velocities * 0.1
 
             left_finger_pos = self.left_finger_position
-
             target_pos = self.target_pos
-            base_id = np.array([1.0, 0.0])
-            arm_id = np.array([0.0, 1.0])
 
-            base_observation = np.concatenate((base_pos_xy, base_yaw, pos_scaled, vel_scaled, left_finger_pos, target_pos, base_id)).astype(np.float32)
-            arm_observation = np.concatenate((base_pos_xy, base_yaw, pos_scaled, vel_scaled, left_finger_pos, target_pos, arm_id)).astype(np.float32)
+            if self.single_agent:
+                observation = np.concatenate((base_pos_xy, base_yaw, pos_scaled, vel_scaled, left_finger_pos, target_pos)).astype(np.float32)
+                observation = observation.reshape((1,-1))
+                outputs = self.ort_model.run(None, {"obs": observation})
+                mu = outputs[0].squeeze()
+                sigma = np.exp(outputs[1].squeeze())
+                action = np.random.normal(mu, sigma)
+                action = np.clip(mu, -1.0, 1.0)
 
-            observation = np.vstack((base_observation, arm_observation))
+                #print(action.shape)
+                base_action = action[:2]
+                arm_action = action[2:]
+            else:
+                base_id = np.array([1.0, 0.0])
+                arm_id = np.array([0.0, 1.0])
+
+                if self.use_cv:
+                    base_observation = np.concatenate((base_pos_xy, base_yaw, left_finger_pos, target_pos, np.zeros(15), base_id)).astype(np.float32)
+                    arm_observation = np.concatenate((pos_scaled, vel_scaled, left_finger_pos, target_pos, arm_id)).astype(np.float32)
+                    observation = np.vstack((base_observation, arm_observation))
+
+                    # outputs = self.ort_model.run(None, {"obs": base_observation.reshape((1,-1))})
+                    # mu = outputs[0]
+                    # sigma = np.exp(outputs[1])
+                    # #action = np.random.normal(mu, sigma)
+                    # base_action = np.clip(mu, -1.0, 1.0)
+
+                    # outputs = self.ort_model.run(None, {"obs": arm_observation.reshape((1,-1))})
+                    # mu = outputs[0]
+                    # sigma = np.exp(outputs[1])
+                    # #action = np.random.normal(mu, sigma)
+                    # arm_action = np.clip(mu, -1.0, 1.0)
+                else:
+                    base_observation = np.concatenate((base_pos_xy, base_yaw, pos_scaled, vel_scaled, left_finger_pos, target_pos, base_id)).astype(np.float32)
+                    arm_observation = np.concatenate((base_pos_xy, base_yaw, pos_scaled, vel_scaled, left_finger_pos, target_pos, arm_id)).astype(np.float32)
+
+                    observation = np.vstack((base_observation, arm_observation))
+
+                outputs = self.ort_model.run(None, {"obs": observation})
+                mu = outputs[0]
+                sigma = np.exp(outputs[1])
+                action = np.random.normal(mu, sigma)
+                action = np.clip(mu, -1.0, 1.0)
+
+                base_action = action[0]
+                arm_action = action[1]
+
+            
 
             # if self.task == "ground":
             #     observation = np.concatenate((pos_scaled, vel_scaled, to_target)).astype(np.float32)
@@ -229,21 +291,14 @@ class MobileFrankaRLNode:
             #     dim=-1,
             # )
             
-            outputs = self.ort_model.run(None, {"obs": observation})
-            mu = outputs[0]
-            sigma = np.exp(outputs[1])
-            action = np.random.normal(mu, sigma)
-            action = np.clip(action, -1.0, 1.0)
 
-            base_action = action[0]
-            arm_action = action[1]
 
             # isaac code for setting joint position targets          
             # targets = self.franka_dof_targets + self.franka_dof_speed_scales * self.dt * self.actions * self.action_scale
             # self.franka_dof_targets[:] = torch.clamp(targets, self.franka_dof_lower_limits, self.franka_dof_upper_limits)
 
             # speed scales are changed from isaac sim to be 0.1 times the isaac sim values
-            dof_speed_scales = np.array([0.1, 0.1 ,0.1 ,0.1, 0.1, 0.1, 0.1, 0.01, 0.01]) * 0.1
+            dof_speed_scales = np.array([0.1, 0.1 ,0.1 ,0.1, 0.1, 0.1, 0.1, 0.01, 0.01]) * 0.2
             #dof_speed_scales = np.array([0.01, 0.01 ,0.01 ,0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
             #dof_speed_scales = np.array([1, 1 ,1 ,1, 1, 1, 1, 0.1, 0.1])
             targets = self.joint_targets + dof_speed_scales * self.dt * arm_action * 7.5
@@ -289,17 +344,22 @@ class MobileFrankaRLNode:
             #print("joint_goal", joint_goal)
             #print("scaled_action", dof_speed_scales * self.dt * arm_action * 7.5)
 
-            self.trajectory_goal_pub.publish(goal)
+            #self.trajectory_goal_pub.publish(goal)
+
+            #self.base_vel_queue.append(base_action)
+
+            #base_action = np.mean(self.base_vel_queue, axis=0)
 
             # publish base actions as twist message, base_action[0] is the linear velocity, base_action[1] is the angular velocity
             twist = Twist()
-            twist.linear.x = base_action[0] * 0.5 * 0.3 # check the speeds 0.2 is safe
-            twist.angular.z = base_action[1] * 0.375 * 0.15 # check the speeds 0.1 is safe
+            twist.linear.x = base_action[0] * 0.5 * 0.5 # check the speeds 0.2 is safe
+            twist.angular.z = base_action[1] * 0.375 * 0.3 # check the speeds 0.1 is safe
             #twist.linear.x = 0.1
             #twist.angular.z = 0.0
 
             #print("base cmd", twist.linear.x, twist.angular.z)
 
+            #print("base_action:", base_action[:2])
             self.base_cmd_vel_pub.publish(twist)
 
             # TODO Need to publish the base action as moving average of the last 10 actions
