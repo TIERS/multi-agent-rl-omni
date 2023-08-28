@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-def initialize_task(config, env, init_sim=True):
+def initialize_task(config, env, init_sim=True, wandb=None):
     from omniisaacgymenvs.tasks.allegro_hand import AllegroHandTask
     from omniisaacgymenvs.tasks.ant import AntLocomotionTask
     from omniisaacgymenvs.tasks.anymal import AnymalTask
@@ -77,6 +77,6 @@ def initialize_task(config, env, init_sim=True):
         name=cfg["task_name"], sim_config=sim_config, env=env
     )
 
-    env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=init_sim)
+    env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=init_sim, wandb=wandb)
 
     return task

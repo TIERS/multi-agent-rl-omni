@@ -46,12 +46,13 @@ class VecEnvRLGames(VecEnvBase):
         self._extras = self._extras.copy()
 
     def set_task(
-        self, task, backend="numpy", sim_params=None, init_sim=True
+        self, task, backend="numpy", sim_params=None, init_sim=True, wandb=None
     ) -> None:
         super().set_task(task, backend, sim_params, init_sim)
 
         self.num_states = self._task.num_states
         self.state_space = self._task.state_space
+        self.wandb = wandb
 
     def step(self, actions):
         if self._task.randomize_actions:
@@ -66,6 +67,10 @@ class VecEnvRLGames(VecEnvBase):
             self.sim_frame_count += 1
 
         self._obs, self._rew, self._resets, self._extras = self._task.post_physics_step()
+
+        if self.wandb is not None:
+            for key, value in self._extras.items():
+                self.wandb.log({"rewards": {key: value}})
 
         if self._task.randomize_observations:
             self._obs = self._task._dr_randomizer.apply_observations_randomization(

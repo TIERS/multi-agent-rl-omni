@@ -111,8 +111,6 @@ def parse_hydra_configs(cfg: DictConfig):
     cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
     cfg_dict['seed'] = cfg.seed
 
-    task = initialize_task(cfg_dict, env)
-
     if cfg.wandb_activate:
         # Make sure to install WandB if you actually use this.
         import wandb
@@ -129,15 +127,18 @@ def parse_hydra_configs(cfg: DictConfig):
             resume="allow",
             monitor_gym=True,
         )
+    
+    task = initialize_task(cfg_dict, env, wandb=wandb if cfg.wandb_activate else None)
 
 
     rlg_trainer = RLGTrainer(cfg, cfg_dict)
     rlg_trainer.launch_rlg_hydra(env)
     rlg_trainer.run()
-    env.close()
 
     if cfg.wandb_activate:
         wandb.finish()
+    
+    env.close()
 
 
 if __name__ == '__main__':
