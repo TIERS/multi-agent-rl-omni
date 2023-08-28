@@ -117,14 +117,14 @@ class RLGTrainer():
             flattened_outputs = traced(*adapter.flattened_inputs)
             print(flattened_outputs)
         
-        torch.onnx.export(traced, *adapter.flattened_inputs, "franka.onnx", verbose=True, input_names=['obs'], output_names=['mu', 'log_std', 'value'])
+        torch.onnx.export(traced, *adapter.flattened_inputs, "mobilefranka.onnx", verbose=True, input_names=['obs'], output_names=['mu', 'log_std', 'value'])
 
-        onnx_model = onnx.load("franka.onnx")
+        onnx_model = onnx.load("mobilefranka.onnx")
 
         # Check that the model is well formed
         onnx.checker.check_model(onnx_model)
 
-        ort_model = ort.InferenceSession("franka.onnx")
+        ort_model = ort.InferenceSession("mobilefranka.onnx")
 
         outputs = ort_model.run(
             None,

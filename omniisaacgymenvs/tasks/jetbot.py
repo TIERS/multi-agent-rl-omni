@@ -81,7 +81,7 @@ class JetbotTask(RLTask):
         self._num_observations = self.ranges_count + 2 # +2 for angle and distance (polar coords)
         self._num_actions = 2
 
-        self._diff_controller = DifferentialController(name="simple_control",wheel_radius=0.03, wheel_base=0.1125)
+        self._diff_controller = DifferentialController(name="simple_control",wheel_radius=0.0325, wheel_base=0.1125)
 
         RLTask.__init__(self, name, env)
 
@@ -104,20 +104,25 @@ class JetbotTask(RLTask):
     def add_prims_to_stage(self, scene):
         # applies articulation settings from the task configuration yaml file
         #self._sim_config.apply_articulation_settings("Cartpole", get_prim_at_path(cartpole.prim_path), self._sim_config.parse_actor_config("Cartpole"))
-        
-        asset_path = "/home/eetu/jetbot_isaac/content/jetbot_with_lidar.usd"
-        add_reference_to_stage(usd_path=asset_path, prim_path=self.default_zero_env_path + "/jetbot_with_lidar")
+        from pathlib import Path
+        current_working_dir = Path.cwd()
+        asset_path = str(current_working_dir.parent) + "/assets/jetbot"
 
         add_reference_to_stage(
-            usd_path="/home/eetu/jetbot_isaac/content/obstacles.usd",
+            usd_path=asset_path + "/jetbot_with_lidar_updated2.usd",
+            prim_path=self.default_zero_env_path + "/jetbot_with_lidar/jetbot_with_lidar"
+        )
+
+        add_reference_to_stage(
+            usd_path=asset_path + "/obstacles.usd",
             prim_path=self.default_zero_env_path + "/obstacles"
         )
 
         result, lidar = omni.kit.commands.execute(
             "RangeSensorCreateLidar",
-            path=self.default_zero_env_path + "/jetbot_with_lidar/jetbot_with_lidar/chassis/Lidar",
+            path=self.default_zero_env_path + "/jetbot_with_lidar/jetbot_with_lidar/chassis/Lidar/Lidar",
             parent=None,
-            min_range=0.1,
+            min_range=0.10,
             max_range=20.0,     
             draw_points=False,
             draw_lines=False,
@@ -130,10 +135,10 @@ class JetbotTask(RLTask):
             yaw_offset=0.0,
             enable_semantics=False,
         )
-        lidar.GetPrim().GetAttribute("xformOp:translate").Set(Gf.Vec3d(0.0, 0.0, 0.11))
+        lidar.GetPrim().GetAttribute("xformOp:translate").Set(Gf.Vec3d(0.0, 0.0, 0.03))
 
         add_reference_to_stage(
-            usd_path="/home/eetu/jetbot_isaac/content/target_cube.usd",
+            usd_path=asset_path + "/target_cube.usd",
             prim_path=self.default_zero_env_path + "/target_cube",
         )
 
@@ -200,7 +205,8 @@ class JetbotTask(RLTask):
 
         #self._jetbots.apply_action(ArticulationActions(joint_velocities=controls))
         #joint_velocities = torch.tensor([[1.0, 1.0], [1.0, 1.0], [1.0, 1.0], [1.0, 1.0]]) * 10
-        self._jetbots.set_joint_velocities(controls)
+        #self._jetbots.set_joint_velocities(controls)
+        self._jetbots.set_joint_velocity_targets(controls)
         #self._jetbots.apply_action(self._diff_controller.forward(np.array([0.2, 0.0])))
         
         # may not be needed for obs and actions randomization
@@ -239,7 +245,7 @@ class JetbotTask(RLTask):
         """This is run when first starting the simulation before first episode."""
         self.lidarInterface = _range_sensor.acquire_lidar_sensor_interface()
         jetbot_paths = self._jetbots.prim_paths
-        self._lidarpaths = [path + "/chassis/Lidar" for path in jetbot_paths]
+        self._lidarpaths = [path + "/chassis/Lidar/Lidar" for path in jetbot_paths]
 
         # get some initial poses
         self.initial_root_pos, self.initial_root_rot = self._jetbots.get_world_poses()

@@ -1,0 +1,57 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        
+
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "debug train",
+            "type": "python",
+            "python": "/home/eetu/.local/share/ov/pkg/isaac_sim-2022.2.0/kit/python/bin/python3",
+            "request": "launch",
+            "program": "${workspaceFolder}/omniisaacgymenvs/scripts/rlgames_train.py",
+            "args": ["task=MobileFrankaMARL"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/omniisaacgymenvs",
+            "envFile": "/home/eetu/.local/share/ov/pkg/isaac_sim-2022.2.0/.vscode/.standalone_examples.env",
+            "preLaunchTask": "setup_python_env",
+            "justMyCode": false
+        },
+        {
+            "name": "debug skrl",
+            "type": "python",
+            "python": "/home/eetu/.local/share/ov/pkg/isaac_sim-2022.2.0/kit/python/bin/python3",
+            "request": "launch",
+            "program": "${workspaceFolder}/omniisaacgymenvs/scripts/ppo_mobilefranka.py",
+            "args": [],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/omniisaacgymenvs",
+            "envFile": "/home/eetu/.local/share/ov/pkg/isaac_sim-2022.2.0/.vscode/.standalone_examples.env",
+            "preLaunchTask": "setup_python_env",
+            "justMyCode": false
+        },
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "env": {
+                "RESOURCE_NAME": "IsaacSim"
+            },
+            "python": "${workspaceFolder}/kit/python/bin/python3",
+            "envFile": "${workspaceFolder}/.vscode/.standalone_examples.env",
+            "preLaunchTask": "setup_python_env"
+        },
+    ]
+}

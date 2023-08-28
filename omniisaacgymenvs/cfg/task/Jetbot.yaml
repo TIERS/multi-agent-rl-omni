@@ -20,8 +20,9 @@ sim:
   gravity: [0.0, 0.0, -9.81]
   add_ground_plane: True
   add_distant_light: False
-  use_flatcache: True
+  use_flatcache: False
   enable_scene_query_support: True
+  disable_contact_processing: False
 
   default_physics_material:
     static_friction: 1.0

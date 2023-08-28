@@ -1,6 +1,61 @@
-# Omniverse Isaac Gym Reinforcement Learning Environments for Isaac Sim
 
-### Jetbot specific
+
+# Multi-agent RL
+
+Mobile manipulation, Isaac Sim
+
+## Server setup and remote access
+
+Use zerotier or dwservice
+
+## Environment setup
+
+Only Isaac Sim version 2022.2.0 is supported.
+
+Follow the [installation section below](#installation). The "pythonsh" part is the same as "PYTHON_PATH". For example in .bashrc add
+
+```bash
+alias pythonsh=~/.local/share/ov/pkg/isaac_sim-2022.2.0/python.sh
+```
+
+You should update self._usd_path on line 48 in omniisaacgymenvs/robots/articulations/mobile_franka.py to be the specific path on your computer. (TODO figure out how to automatically detect the path.)
+
+## MobileFranka single agent environment
+
+cd to omniisaacgymenvs
+
+Train with 
+```bash
+pythonsh scripts/rlgames_train.py task=MobileFranka
+```
+
+You can vary the parallel environments number by num_envs argument:
+* rl-games requires `minibatch_size` defined in the training config to be a factor of `horizon_length * num_envs`. If this is not the case, you may see an assertion error `assert(self.batch_size % self.minibatch_size == 0)`. Please adjust the parameters in the training config `yaml` file accordingly.
+* Good minibatch size is usually (horizon_length * num_envs) / 2 
+```bash
+pythonsh scripts/rlgames_train.py task=MobileFranka num_envs=512
+```
+
+## MobileFranka multi agent environment
+
+cd to omniisaacgymenvs
+
+Train with 
+```bash
+pythonsh scripts/rlgames_train.py task=MobileFrankaMARL
+```
+
+Tested with num_envs=512 and minibatch_size=4096
+
+[More info on Multi agent task specification](/docs/mobile_franka.md) 
+
+## SKRL - RL library that has support for NVIDIA Omniverse Isaac Gym environments
+
+https://skrl.readthedocs.io/en/latest/
+
+## Jetbot specific
+
+cd to omniisaacgymenvs
 
 Train with just MLP and single "frame" of lidar ranges
 
@@ -38,6 +93,9 @@ Configs are in omniisaacgymenvs/cfg/task and omniisaacgymenvs/cfg/train folders.
 
 To use wandb, update "wandb_entity: 'your_username'" in config.yaml
 
+
+# Omniverse Isaac Gym Reinforcement Learning Environments for Isaac Sim
+
 ### About this repository
 
 This repository contains Reinforcement Learning examples that can be run with the latest release of [Isaac Sim](https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/overview.html). RL examples are trained using PPO from [rl_games](https://github.com/Denys88/rl_games) library and examples are built on top of Isaac Sim's `omni.isaac.core` and `omni.isaac.gym` frameworks.
@@ -58,14 +116,14 @@ This repository contains Reinforcement Learning examples that can be run with th
 
 Follow the Isaac Sim [documentation](https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/install_basic.html) to install the latest Isaac Sim release. 
 
-*Examples in this repository rely on features from the most recent Isaac Sim release. Please make sure to update any existing Isaac Sim build to the latest release version, 2022.1.1, to ensure examples work as expected.*
+*Examples in this repository rely on features from the most recent Isaac Sim release. Please make sure to update any existing Isaac Sim build to the latest release version, 2022.2.0, to ensure examples work as expected.*
 
 Once installed, this repository can be used as a python module, `omniisaacgymenvs`, with the python executable provided in Isaac Sim.
 
 To install `omniisaacgymenvs`, first clone this repository:
 
 ```bash
-git clone https://github.com/NVIDIA-Omniverse/OmniIsaacGymEnvs.git
+git clone https://github.com/TIERS/multi-agent-rl-omni
 ```
 
 Once cloned, locate the [python executable in Isaac Sim](https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/install_python.html). By default, this should be `python.sh`. We will refer to this path as `PYTHON_PATH`.
@@ -75,9 +133,10 @@ To set a `PYTHON_PATH` variable in the terminal that links to the python executa
 ```
 For Linux: alias PYTHON_PATH=~/.local/share/ov/pkg/isaac_sim-*/python.sh
 For Windows: doskey PYTHON_PATH=C:\Users\user\AppData\Local\ov\pkg\isaac_sim-*\python.bat $*
+For IsaacSim Docker: alias PYTHON_PATH=/isaac-sim/python.sh
 ```
 
-Install `omniisaacgymenvs` as a python module for `PYTHON_PATH`:
+Install `omniisaacgymenvs` as a python module for `PYTHON_PATH`. Change directory to root of this repo and run:
 
 ```bash
 PYTHON_PATH -m pip install -e .
@@ -86,7 +145,7 @@ PYTHON_PATH -m pip install -e .
 
 ### Running the examples
 
-*Note: All commands should be executed from `omniisaacgymenvs/omniisaacgymenvs`.*
+*Note: All commands should be executed from `OmniIsaacGymEnvs/omniisaacgymenvs`.*
 
 To train your first policy, run:
 
@@ -140,19 +199,19 @@ Note that if there are special characters such as `[` or `=` in the checkpoint n
 you will need to escape them and put quotes around the string. For example,
 `checkpoint="runs/Ant/nn/last_Antep\=501rew\[5981.31\].pth"`
 
-We provide pre-trained checkpoints on the [Nucleus](https://docs.omniverse.nvidia.com/prod_nucleus/prod_nucleus/overview.html) server under `Assets/Isaac/2022.1/Isaac/Samples/OmniIsaacGymEnvs/Checkpoints`. Run the following command
+We provide pre-trained checkpoints on the [Nucleus](https://docs.omniverse.nvidia.com/prod_nucleus/prod_nucleus/overview.html) server under `Assets/Isaac/2022.2.0/Isaac/Samples/OmniIsaacGymEnvs/Checkpoints`. Run the following command
 to launch inference with pre-trained checkpoint:
 
 Localhost (To set up localhost, please refer to the [Isaac Sim installation guide](https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/install_basic.html)):
 
 ```bash
-PYTHON_PATH scripts/rlgames_train.py task=Ant checkpoint=omniverse://localhost/NVIDIA/Assets/Isaac/2022.1/Isaac/Samples/OmniIsaacGymEnvs/Checkpoints/ant.pth test=True num_envs=64
+PYTHON_PATH scripts/rlgames_train.py task=Ant checkpoint=omniverse://localhost/NVIDIA/Assets/Isaac/2022.2.0/Isaac/Samples/OmniIsaacGymEnvs/Checkpoints/ant.pth test=True num_envs=64
 ```
 
 Production server:
 
 ```bash
-PYTHON_PATH scripts/rlgames_train.py task=Ant checkpoint=http://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/2022.1/Isaac/Samples/OmniIsaacGymEnvs/Checkpoints/ant.pth test=True num_envs=64
+PYTHON_PATH scripts/rlgames_train.py task=Ant checkpoint=http://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/2022.2.0/Isaac/Samples/OmniIsaacGymEnvs/Checkpoints/ant.pth test=True num_envs=64
 ```
 
 When running with a pre-trained checkpoint for the first time, we will automatically download the checkpoint file to `omniisaacgymenvs/checkpoints`. For subsequent runs, we will re-use the file that has already been downloaded, and will not overwrite existing checkpoints with the same name in the `checkpoints` folder.
@@ -262,7 +321,7 @@ the ANYmals in the scene to go into third-person mode and manually control the r
 Launch this demo with the following command. Note that this demo limits the maximum number of ANYmals in the scene to 128.
 
 ```
-PYTHON_PATH scripts/rlgames_play.py task=AnymalTerrain num_envs=64 checkpoint=omniverse://localhost/NVIDIA/Assets/Isaac/2022.1/Isaac/Samples/OmniIsaacGymEnvs/Checkpoints/anymal_terrain.pth 
+PYTHON_PATH scripts/rlgames_demo.py task=AnymalTerrain num_envs=64 checkpoint=omniverse://localhost/NVIDIA/Assets/Isaac/2022.2.0/Isaac/Samples/OmniIsaacGymEnvs/Checkpoints/anymal_terrain.pth 
 ```
 
 <img src="https://user-images.githubusercontent.com/34286328/184688654-6e7899b2-5847-4184-8944-2a96b129b1ff.gif" width="600" height="300"/>

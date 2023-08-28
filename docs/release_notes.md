@@ -1,6 +1,34 @@
 Release Notes
 =============
 
+2.0.0 - December 15, 2022
+-------------------------
+
+Additions
+---------
+- Update to Viewport 2.0
+- Allow for runtime mass randomization on GPU pipeline
+- Add runtime mass randomization to ShadowHand environments
+- Introduce `disable_contact_processing` simulation parameter for faster contact processing
+- Use physics replication for cloning by default for faster load time
+
+Changes
+-------
+- Update AnymalTerrain environment to use contact forces
+- Update Quadcopter example to apply local forces
+- Update training parameters for ShadowHandOpenAI_FF environment
+- Rename rlgames_play.py to rlgames_demo.py
+
+Fixes
+-----
+- Remove fix_base option from articulation configs
+- Fix in_hand_manipulation random joint position sampling on reset
+- Fix mass and density randomization in MT training script
+- Fix actions/observations noise randomization in MT training script
+- Fix random seed when domain randomization is enabled
+- Check whether simulation is running before executing pre_physics_step logic
+
+
 1.1.0 - August 22, 2022
 -----------------------
 

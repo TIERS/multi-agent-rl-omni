@@ -135,7 +135,10 @@ class Trainer(TrainerMT):
         self.action_queue = queue.Queue(1)
         self.data_queue = queue.Queue(1)
 
-        self.env.initialize(self.action_queue, self.data_queue)
+        if "mt_timeout" in self.trainer.cfg_dict:
+            self.env.initialize(self.action_queue, self.data_queue, self.trainer.cfg_dict["mt_timeout"])
+        else:
+            self.env.initialize(self.action_queue, self.data_queue)
         self.ppo_thread = PPOTrainer(self.env, self.task, self.trainer)
         self.ppo_thread.daemon = True
         self.ppo_thread.start()
@@ -194,6 +197,7 @@ def parse_hydra_configs(cfg: DictConfig):
     # sets seed. if seed is -1 will pick a random one
     from omni.isaac.core.utils.torch.maths import set_seed
     cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
+    cfg_dict['seed'] = cfg.seed
 
     rlg_trainer = RLGTrainer(cfg, cfg_dict)
     trainer = Trainer(rlg_trainer, env)

@@ -124,6 +124,9 @@ class QuadcopterTask(RLTask):
         return observations
 
     def pre_physics_step(self, actions) -> None:
+        if not self._env._world.is_playing():
+            return
+    
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
             self.reset_idx(reset_env_ids)
@@ -148,22 +151,15 @@ class QuadcopterTask(RLTask):
         self.forces[reset_env_ids] = 0.0
         self.dof_position_targets[reset_env_ids] = self.dof_pos[reset_env_ids]
 
-        _, rotors_quat = self._copters.rotors.get_world_poses(clone=False)
-        rotors_quat = rotors_quat.reshape(self._num_envs, 4, 4)
-
-        for i in range(4):
-            self.forces_world_frame[:, i, :] = quat_apply(rotors_quat[:, i, :], self.forces[:, i, :])
-
         # apply actions
         self._copters.set_joint_position_targets(self.dof_position_targets)        
-        self._copters.rotors.apply_forces(self.forces_world_frame)
+        self._copters.rotors.apply_forces(self.forces, is_global=False)
 
     def post_reset(self):
         # control tensors
         self.dof_position_targets = torch.zeros((self._num_envs, self._copters.num_dof), dtype=torch.float32, device=self._device, requires_grad=False)
         self.thrusts = torch.zeros((self._num_envs, 4), dtype=torch.float32, device=self._device, requires_grad=False)
         self.forces = torch.zeros((self._num_envs, self._copters.rotors.count // self._num_envs, 3), dtype=torch.float32, device=self._device, requires_grad=False)
-        self.forces_world_frame = torch.zeros((self._num_envs, self._copters.rotors.count // self._num_envs, 3), dtype=torch.float32, device=self._device, requires_grad=False)
 
         self.target_positions = torch.zeros((self._num_envs, 3), device=self._device)
         self.target_positions[:, 2] = 1.0

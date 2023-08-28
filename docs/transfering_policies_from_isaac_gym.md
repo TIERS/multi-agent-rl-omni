@@ -34,6 +34,16 @@ in the observation buffer `self.obs_buf`. Similarly, please ensure all quaternio
 are in `wxyz` before passing them in any of the utility functions in `omni.isaac.core`. 
 
 
+### Assets
+
+Isaac Sim provides [URDF](https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/ext_omni_isaac_urdf.html) 
+and [MJCF](https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/ext_omni_isaac_mjcf.html) importers for translating URDF and MJCF assets into USD format.
+Any robot or object assets must be in .usd, .usda, or .usdc format for Isaac Sim and Omniverse.
+For more details on working with USD, please see https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/tutorial_intro_usd.html.
+Importer tools are also available for other common geometry file formats, such as .obj, .fbx, and more.
+Please see [Asset Importer](https://docs.omniverse.nvidia.com/app_create/prod_extensions/ext_asset-importer.html) for more details.
+
+
 ### Joint Order
 
 Isaac Sim's `ArticulationView` in `omni.isaac.core` assumes a breadth-first 
@@ -110,11 +120,6 @@ named to `joint` in Isaac Sim. `root_states` is now separated into different API
 Similary, `dof_states` are retrieved individually in Isaac Sim as `joint_positions` and `joint_velocities`. 
 APIs in Isaac Sim also no longer follow the explicit `_tensors` or `_tensor_indexed` suffixes in naming.
 Indexed versions of APIs now happen implicitly through the optional `indices` parameter.
-
-As part of our API improvements, we are defining a new set of contact APIs that aim to provide more useful details
-on contacts and collisions. This will be a replacement of `net_contact_force` in the Isaac Gym Preview Release and 
-will be available in the next release of Isaac Sim. For now, Isaac Sim does not provide a tensorized API for 
-collecting contacts.
 
 
 ### Task Configuration Files

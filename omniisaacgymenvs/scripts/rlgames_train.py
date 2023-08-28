@@ -106,11 +106,12 @@ def parse_hydra_configs(cfg: DictConfig):
         cfg_dict["train"]["params"]["config"]["minibatch_size"] = 128
         # cfg_dict["task"]["domain_randomization"]["randomize"] = False
 
-    task = initialize_task(cfg_dict, env)
-
     # sets seed. if seed is -1 will pick a random one
     from omni.isaac.core.utils.torch.maths import set_seed
     cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
+    cfg_dict['seed'] = cfg.seed
+
+    task = initialize_task(cfg_dict, env)
 
     if cfg.wandb_activate:
         # Make sure to install WandB if you actually use this.
