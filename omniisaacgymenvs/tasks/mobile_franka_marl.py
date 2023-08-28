@@ -79,7 +79,7 @@ class MobileFrankaMARLTask(RLTask):
 
         if self.use_local_obs:
             self._num_observations = 26
-            self._num_states = 27 + 3 #27
+            self._num_states = 27 # + 3 #27
 
         self.initial_target_pos = np.array([2.0, 0.0, 0.5])
 
@@ -269,8 +269,8 @@ class MobileFrankaMARLTask(RLTask):
             self.states_buf = torch.hstack((
                 base_pos_xy,
                 base_yaw,
-                base_vel_xy, 
-                base_angvel_z, 
+                #base_vel_xy, 
+                #base_angvel_z, 
                 arm_dof_pos_scaled,
                 franka_dof_vel[:, 3:] * self.dof_vel_scale,
                 self.franka_lfinger_pos,
@@ -286,7 +286,8 @@ class MobileFrankaMARLTask(RLTask):
                 #base_angvel_z, 
                 franka_dof_vel[:, 3:] * self.dof_vel_scale,
                 self.franka_lfinger_pos,
-                self.target_positions
+                self.target_positions,
+
             )).to(dtype=torch.float32)
 
             base_obs = obs
@@ -496,7 +497,7 @@ class MobileFrankaMARLTask(RLTask):
         #print("penalty_joint_limit", penalty_joint_limit)
         
         reward = torch.zeros_like(self.rew_buf)
-        reward +=  0.5 * torch.exp(-1.2 * distance_to_target) - self.action_penalty_scale * action_penalty - 0.03 * penalty_joint_limit
+        reward +=  0.5 * torch.exp(-1.2 * distance_to_target) - self.action_penalty_scale * action_penalty - 0.06 * penalty_joint_limit
         self.extras["rewards/distance_to_target"] = torch.mean(distance_to_target)
         self.extras["rewards/penalty_joint_limit"] = torch.mean(penalty_joint_limit)
         self.extras["rewards/action_penalty"] = torch.mean(action_penalty)

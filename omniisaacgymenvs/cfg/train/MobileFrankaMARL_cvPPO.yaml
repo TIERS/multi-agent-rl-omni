@@ -47,7 +47,7 @@ params:
     reward_shaper:
       scale_value: 0.01
     normalize_advantage: True
-    gamma: 0.95
+    gamma: 0.90 # 0.90 works best for some reason?
     tau: 0.95
     learning_rate: 3e-4
     lr_schedule: adaptive
@@ -71,7 +71,7 @@ params:
 
     central_value_config:
       minibatch_size: 2048
-      mini_epochs: 4
+      mini_epochs: 8
       learning_rate: 3e-4
       clip_value: False
       normalize_input: True
@@ -79,7 +79,7 @@ params:
         name: actor_critic
         central_value: True
         mlp:
-          units: [512, 256, 128]
+          units: [1024, 512, 256]
           activation: elu
           initializer:
             name: default
