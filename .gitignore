@@ -6,3 +6,8 @@ checkpoints
 omniisaacgymenvs/wandb
 omniisaacgymenvs/scripts/wandb
 notebooks/data/
+.venv/
+*.pdf
+*.tex
+*.csv
+omniisaacgymenvs/*.onnx
